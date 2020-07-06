@@ -1,0 +1,6 @@
+apiVersion: cert-manager.io/v1alpha3
+kind: Issuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}

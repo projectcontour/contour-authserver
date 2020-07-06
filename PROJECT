@@ -1,0 +1,3 @@
+domain: projectcontour.io
+repo: github.com/projectcontour/contour-authserver
+version: "2"

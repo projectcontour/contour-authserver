@@ -1,0 +1,10 @@
+apiVersion: cert-manager.io/v1alpha3
+kind: Certificate
+metadata:
+  name: testserver
+spec:
+  dnsNames:
+  - testserver
+  secretName: testserver
+  issuerRef:
+    name: selfsigned

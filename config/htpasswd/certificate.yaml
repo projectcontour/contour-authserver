@@ -1,0 +1,10 @@
+apiVersion: cert-manager.io/v1alpha3
+kind: Certificate
+metadata:
+  name: htpasswd
+spec:
+  dnsNames:
+  - htpasswd
+  secretName: htpasswd
+  issuerRef:
+    name: selfsigned

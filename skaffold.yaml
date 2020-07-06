@@ -1,0 +1,22 @@
+apiVersion: skaffold/v2beta5
+kind: Config
+metadata:
+  name: contour-authserver
+build:
+  artifacts:
+  - image: contour-authserver
+deploy:
+  kustomize:
+    paths:
+    - config/default
+profiles:
+- name: testserver
+  deploy:
+    kustomize:
+      paths:
+      - config/testserver
+- name: htpasswd
+  deploy:
+    kustomize:
+      paths:
+      - config/htpasswd
