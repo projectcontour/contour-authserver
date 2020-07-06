@@ -60,15 +60,15 @@ vet: ## Run go vet against code
 lint: ## Run linters
 lint:
 	@if command -v golangci-lint > /dev/null 2>&1 ; then \
-		golangci-lint run --exclude-use-default=false ; \
+		golangci-lint run -v --exclude-use-default=false ; \
 	else \
-		$(DOCKER) run \
+		docker run \
 			--rm \
 			--volume $$(pwd):/app \
 			--workdir /app \
 			--env GO111MODULE \
-			golangci/golangci-lint:v1.23.7 \
-			golangci-lint run --exclude-use-default=false ; \
+			golangci/golangci-lint:v1.28.1 \
+			golangci-lint run -v --exclude-use-default=false ; \
 	fi
 
 .PHONY: docker-build
