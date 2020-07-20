@@ -19,6 +19,7 @@ import (
 	"github.com/projectcontour/contour-authserver/pkg/auth"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -52,10 +53,16 @@ func NewHtpasswdCommand() *cobra.Command {
 				return ExitErrorf(EX_CONFIG, "failed to create controller manager: %s", err)
 			}
 
+			secretsSelector, err := labels.Parse(mustString(cmd.Flags().GetString("selector")))
+			if err != nil {
+				return ExitErrorf(EX_CONFIG, "failed to parse secrets selector: %s", err)
+			}
+
 			htpasswd := &auth.Htpasswd{
-				Log:    log,
-				Client: mgr.GetClient(),
-				Realm:  mustString(cmd.Flags().GetString("auth-realm")),
+				Log:      log,
+				Client:   mgr.GetClient(),
+				Realm:    mustString(cmd.Flags().GetString("auth-realm")),
+				Selector: secretsSelector,
 			}
 
 			if err := htpasswd.RegisterWithManager(mgr); err != nil {
@@ -128,6 +135,7 @@ func NewHtpasswdCommand() *cobra.Command {
 	// Controller flags.
 	cmd.Flags().String("metrics-address", ":8080", "The address the metrics endpoint binds to.")
 	cmd.Flags().StringSlice("watch-namespaces", []string{}, "The list of namespaces to watch for Secrets.")
+	cmd.Flags().String("selector", "", "Selector (label-query) to filter Secrets, supports '=', '==', and '!='.")
 
 	// GRPC flags.
 	cmd.Flags().String("address", ":9090", "The address the authentication endpoint binds to.")

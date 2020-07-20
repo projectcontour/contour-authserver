@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -32,11 +33,27 @@ func TestHtpasswdAuth(t *testing.T) {
 	client := fake.NewFakeClient(
 		&v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
+				Name:      "notmatched",
+				Namespace: metav1.NamespaceDefault,
+				Annotations: map[string]string{
+					AnnotationAuthType:  "basic",
+					AnnotationAuthRealm: "*",
+				},
+			},
+			Type: v1.SecretTypeOpaque,
+			Data: map[string][]byte{
+				// user=notmatched, pass=notmatched
+				"auth": []byte("notmatched:$apr1$4W6cRE66$iANZepJfRTrpk3OxlzxAC0"),
+			},
+		},
+		&v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example1",
 				Namespace: metav1.NamespaceDefault,
-				Labels: map[string]string{
-					LabelAuthType:  "basic",
-					LabelAuthRealm: "*",
+				Labels:    map[string]string{"app": "authserver"},
+				Annotations: map[string]string{
+					AnnotationAuthType:  "basic",
+					AnnotationAuthRealm: "*",
 				},
 			},
 			Type: v1.SecretTypeOpaque,
@@ -45,14 +62,14 @@ func TestHtpasswdAuth(t *testing.T) {
 				"auth": []byte("example1:$apr1$WBCC5B.w$fUu8qiKG/rLdMs3OTy9gc0"),
 			},
 		},
-
 		&v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example2",
 				Namespace: metav1.NamespaceDefault,
-				Labels: map[string]string{
-					LabelAuthType:  "basic",
-					LabelAuthRealm: "*",
+				Labels:    map[string]string{"app": "authserver"},
+				Annotations: map[string]string{
+					AnnotationAuthType:  "basic",
+					AnnotationAuthRealm: "*",
 				},
 			},
 			Type: v1.SecretTypeOpaque,
@@ -65,9 +82,10 @@ func TestHtpasswdAuth(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example3",
 				Namespace: metav1.NamespaceDefault,
-				Labels: map[string]string{
-					LabelAuthType:  "basic",
-					LabelAuthRealm: "example3",
+				Labels:    map[string]string{"app": "authserver"},
+				Annotations: map[string]string{
+					AnnotationAuthType:  "basic",
+					AnnotationAuthRealm: "example3",
 				},
 			},
 			Type: v1.SecretTypeOpaque,
@@ -78,19 +96,26 @@ func TestHtpasswdAuth(t *testing.T) {
 		},
 	)
 
-	auth := Htpasswd{
-		Log:       log.NullLogger{},
-		Realm:     "default",
-		Client:    client,
-		Passwords: nil,
+	selector, err := labels.Parse("app=authserver")
+	if err != nil {
+		t.Fatalf("failed to parse selector: %s", err)
 	}
 
-	_, err := auth.Reconcile(ctrl.Request{})
+	auth := Htpasswd{
+		Log:      log.NullLogger{},
+		Realm:    "default",
+		Client:   client,
+		Selector: selector,
+	}
+
+	_, err = auth.Reconcile(ctrl.Request{})
 	assert.NoError(t, err, "reconciliation should not have failed")
 	assert.NotNil(t, auth.Passwords, "reconciliation should have set a htpasswd file")
 	assert.True(t, auth.Match("example1", "example1"), "auth for example1:example1 should have succeeded")
 	assert.True(t, auth.Match("example2", "example2"), "auth for example2:example2 should have succeeded")
 	assert.False(t, auth.Match("example3", "example3"), "auth for example3:example3 should have failed (wrong realm)")
+	assert.False(t, auth.Match("notmatched", "notmatched"),
+		"auth for notmatched:notmatched should have failed (filtered by label selector)")
 
 	// Check an unauthorized response.
 	response, err := auth.Check(context.TODO(), &Request{
