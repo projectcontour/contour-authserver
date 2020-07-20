@@ -6,43 +6,42 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	netUrl "net/url"
+	"net/url"
 	"strings"
 
 	"github.com/allegro/bigcache"
+	"github.com/coreos/go-oidc"
 	"github.com/go-logr/logr"
 	"github.com/projectcontour/contour-authserver/pkg/config"
 	"github.com/projectcontour/contour-authserver/pkg/store"
-
-	"github.com/coreos/go-oidc"
 	"golang.org/x/oauth2"
 )
 
 const (
-	contourAuth  = "conauth"
-	contourToken = "contourtoken"
+	stateQueryParamName = "conauth"
+	oauthTokenName      = "contourtoken"
 )
 
-// OidcConnect ...
-type OidcConnect struct {
+// OIDCConnect .
+type OIDCConnect struct {
 	Log        logr.Logger
-	OidcConfig *config.OidcConfig
+	OidcConfig *config.OIDCConfig
 	Cache      *bigcache.BigCache
 	HTTPClient *http.Client
 	provider   *oidc.Provider
 }
 
-// implementing interface
-var _ Checker = &OidcConnect{}
+// Implement interface.
+var _ Checker = &OIDCConnect{}
 
 //Check ...
-func (h *OidcConnect) Check(ctx context.Context, req *Request) (*Response, error) {
+func (h *OIDCConnect) Check(ctx context.Context, req *Request) (*Response, error) {
 
 	if h.provider == nil {
 		h.provider, _ = h.initProvider(ctx)
 	}
 
-	// generate response object
+	// Generate response object.
 	resp := Response{
 		Response: http.Response{
 			StatusCode: http.StatusUnauthorized,
@@ -50,71 +49,72 @@ func (h *OidcConnect) Check(ctx context.Context, req *Request) (*Response, error
 		},
 	}
 
-	// h.Log.Info(formatRequest(request))
+	// h.Log.Info(formatRequest(req))
 	url := parseURL(req)
 	h.verifyRequestHandler(ctx, req, &resp, url)
 
 	return &resp, nil
 }
 
-func (h *OidcConnect) verifyRequestHandler(ctx context.Context, req *Request, resp *Response, url *netUrl.URL) {
+func (h *OIDCConnect) verifyRequestHandler(ctx context.Context, req *Request, resp *Response, url *url.URL) {
 
-	//request verification handler ...
-	// 1. are you coming from IDP callback ?
+	//Request verification handler ...
+
+	// 1. Are you coming from IDP callback ?
 	if url.Path == h.OidcConfig.RedirectPath {
-		// callback method.. request come from IDP
 		h.callbackHandler(ctx, req, resp, url)
 		return
 	}
 
-	// 2. check do we have stateid stored in querystring ?
-	var state *store.OidcState
-	var validState bool
+	// 2. Check do we have stateid stored in querystring ?
+	var state *store.OIDCState
+	validState := false
 
-	stateToken := url.Query().Get(contourAuth)
+	stateToken := url.Query().Get(stateQueryParamName)
 	stateByte, err := h.Cache.Get(stateToken)
 	if err == nil {
 		state = store.ConvertToType(stateByte)
 	}
 
-	// 2.1 if its available, lets check and make sure this is a valid state
-	//re-initialize provider to refresh the context, this seems like bugs with coreos go-oidc module
-	provider, err := h.initProvider(ctx)
-	if err != nil {
-		h.Log.Info(fmt.Sprintf("fail to initialize provider: %v", err))
-		return
-	}
-
-	validState = h.isStateValid(ctx, state, provider)
-
-	// not a valid state from querystring, thus we check state from cookie
-	if !validState {
+	// 2.1 State not found, try to retrieve from cookies.
+	if state == nil {
 		state, _ = h.getStateFromCookie(ctx, req)
+	}
+
+	//2.2 State exist, proceed with token validation.
+	if state != nil {
+		// Re-initialize provider to refresh the context, this seems like bugs with coreos go-oidc module.
+		provider, err := h.initProvider(ctx)
+		if err != nil {
+			h.Log.Info(fmt.Sprintf("fail to initialize provider: %v", err))
+			return
+		}
+
 		validState = h.isStateValid(ctx, state, provider)
+
 	}
 
-	if !validState {
+	if validState {
+		stateJSON, _ := json.Marshal(state)
+		// Restore cookies.
+		resp.Response.Header.Add(oauthTokenName, string(stateJSON))
+		h.Cache.Delete(state.OAuthState)
+		resp.Allow = true
+
+	} else {
+		// 2.3 Route to login handler.
 		h.loginHandler(req, resp, url)
-		return
 	}
 
-	stateJSON, _ := json.Marshal(state)
-	// restore cookies
-	resp.Response.Header.Add(contourToken, string(stateJSON))
-	h.Cache.Delete(state.OAuthState)
-
-	resp.Allow = true
 }
 
-func (h *OidcConnect) loginHandler(req *Request, resp *Response, url *netUrl.URL) {
+func (h *OIDCConnect) loginHandler(req *Request, resp *Response, u *url.URL) {
 
-	h.Log.Info("========  loginHandler")
-	// create new state
 	state := store.NewState()
 	state.GenerateOauthState()
-	state.RequestPath = url.Host + url.Path
+	state.RequestPath = u.Host + u.Path
 
-	resp.Response.Header.Add(contourToken, "")
+	resp.Response.Header.Add(oauthTokenName, "")
 
 	authCodeURL := h.oauth2Config().AuthCodeURL(state.OAuthState)
 	byteState := store.ConvertToByte(state)
@@ -124,14 +124,13 @@ func (h *OidcConnect) loginHandler(req *Request, resp *Response, url *netUrl.URL
 	resp.Response.Header.Add("Location", authCodeURL)
 }
 
-func (h *OidcConnect) callbackHandler(ctx context.Context, req *Request, resp *Response, url *netUrl.URL) {
-	h.Log.Info("========  callbackHandler")
+func (h *OIDCConnect) callbackHandler(ctx context.Context, req *Request, resp *Response, u *url.URL) {
 
-	// 1. get all variable needed
-	oauthState := url.Query().Get("state")
-	code := url.Query().Get("code")
+	// 1. Get all variable needed.
+	oauthState := u.Query().Get("state")
+	code := u.Query().Get("code")
 
-	// check state and code validity
+	// Check state and code validity.
 	if code == "" || oauthState == "" {
 		resp.Response.StatusCode = http.StatusBadRequest
 		resp.Allow = false
@@ -146,7 +145,7 @@ func (h *OidcConnect) callbackHandler(ctx context.Context, req *Request, resp *R
 		return
 	}
 
-	// retrieve token
+	// Retrieve token.
 	context := oidc.ClientContext(ctx, h.HTTPClient)
 	token, err := h.oauth2Config().Exchange(context, code)
 	if err != nil {
@@ -161,7 +160,7 @@ func (h *OidcConnect) callbackHandler(ctx context.Context, req *Request, resp *R
 		return
 	}
 
-	//store token
+	//Store token.
 	state := store.ConvertToType(stateByte)
 	state.IDToken = rawIDToken
 	state.AccessToken = token.AccessToken
@@ -169,15 +168,15 @@ func (h *OidcConnect) callbackHandler(ctx context.Context, req *Request, resp *R
 	stateByte = store.ConvertToByte(state)
 	h.Cache.Set(state.OAuthState, stateByte)
 
-	// set  redirection
+	// Set  redirection.
 	resp.Response.StatusCode = http.StatusTemporaryRedirect
-	resp.Response.Header.Add(contourAuth, state.OAuthState)
+	resp.Response.Header.Add(stateQueryParamName, state.OAuthState)
 
 	// TODO .. may need to rebuild this, in case user could have other query parameters
-	resp.Response.Header.Add("Location", fmt.Sprintf("http://%s?%s=%s", state.RequestPath, contourAuth, state.OAuthState))
+	resp.Response.Header.Add("Location", fmt.Sprintf("http://%s?%s=%s", state.RequestPath, stateQueryParamName, state.OAuthState))
 }
 
-func (h *OidcConnect) isStateValid(ctx context.Context, state *store.OidcState, provider *oidc.Provider) bool {
+func (h *OIDCConnect) isStateValid(ctx context.Context, state *store.OIDCState, provider *oidc.Provider) bool {
 
 	if state == nil {
 		return false
@@ -185,14 +184,14 @@ func (h *OidcConnect) isStateValid(ctx context.Context, state *store.OidcState, 
 
 	verifier := provider.Verifier(&oidc.Config{ClientID: h.OidcConfig.ClientID, SkipIssuerCheck: true})
 
-	//verify token and signature
+	// Verify token and signature.
 	idToken, err := verifier.Verify(ctx, state.IDToken)
 	if err != nil {
 		h.Log.Info(fmt.Sprintf("failed to verify ID token: %v", err))
 		return false
 	}
 
-	//try to claim
+	// Try to claim.
 	var claims json.RawMessage
 	if err := idToken.Claims(&claims); err != nil {
 		h.Log.Info(fmt.Sprintf("error decoding ID token claims: %v", err))
@@ -202,19 +201,19 @@ func (h *OidcConnect) isStateValid(ctx context.Context, state *store.OidcState, 
 	return true
 }
 
-func (h *OidcConnect) getStateFromCookie(ctx context.Context, req *Request) (*store.OidcState, error) {
+func (h *OIDCConnect) getStateFromCookie(ctx context.Context, req *Request) (*store.OIDCState, error) {
 
-	// do you have cookies stored ?
+	// Do you have cookies stored ?
 	cookieVal := req.Request.Header.Get("cookie")
-	var state *store.OidcState
-	// check through and validate cookies
+	var state *store.OIDCState
+	// Check through and get the right cookies
 	if len(cookieVal) > 0 {
 		cookies := strings.Split(cookieVal, ";")
 
 		for _, c := range cookies {
 			c = strings.TrimSpace(c)
-			if strings.HasPrefix(c, contourToken) {
-				cookieJSON := c[len(contourToken)+1:]
+			if strings.HasPrefix(c, oauthTokenName) {
+				cookieJSON := c[len(oauthTokenName)+1:]
 				if len(cookieJSON) > 0 {
 					state = store.ConvertToType([]byte(cookieJSON))
 					return state, nil
@@ -227,7 +226,7 @@ func (h *OidcConnect) getStateFromCookie(ctx context.Context, req *Request) (*st
 	return nil, errors.New("No Cookies available")
 }
 
-func (h *OidcConnect) initProvider(ctx context.Context) (*oidc.Provider, error) {
+func (h *OIDCConnect) initProvider(ctx context.Context) (*oidc.Provider, error) {
 	provider, err := oidc.NewProvider(ctx, h.OidcConfig.IssuerURL)
 	if err != nil {
 		h.Log.Info(fmt.Sprintf("Unable to initialize provider %s", err))
@@ -236,7 +235,7 @@ func (h *OidcConnect) initProvider(ctx context.Context) (*oidc.Provider, error) 
 	return provider, nil
 }
 
-func (h *OidcConnect) oauth2Config() *oauth2.Config {
+func (h *OIDCConnect) oauth2Config() *oauth2.Config {
 	return &oauth2.Config{
 		ClientID:     h.OidcConfig.ClientID,
 		ClientSecret: h.OidcConfig.ClientSecret,
@@ -246,15 +245,15 @@ func (h *OidcConnect) oauth2Config() *oauth2.Config {
 	}
 }
 
-func parseURL(req *Request) *netUrl.URL {
+func parseURL(req *Request) *url.URL {
 
-	plainURL, _ := netUrl.QueryUnescape(req.Request.URL.String())
-	url, err := netUrl.Parse(plainURL)
+	plainURL, _ := url.QueryUnescape(req.Request.URL.String())
+	u, err := url.Parse(plainURL)
 	if err != nil {
 		return nil
 	}
 
-	return url
+	return u
 }
 
 // TODO :: safe to ignore
@@ -266,8 +265,8 @@ func formatRequest(r *Request) string {
 
 	fmt.Println("============= START =================")
 
-	url := fmt.Sprintf("%v %v %v %v", r.Request.Method, r.Request.URL, r.Request.RequestURI, r.Request.Proto)
-	request = append(request, url)
+	u := fmt.Sprintf("%v %v %v %v", r.Request.Method, r.Request.URL, r.Request.RequestURI, r.Request.Proto)
+	request = append(request, u)
 	// Add the host
 	request = append(request, fmt.Sprintf("Host: %v", r.Request.Host))
 	// Loop through headers
