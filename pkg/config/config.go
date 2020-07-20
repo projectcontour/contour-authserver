@@ -4,8 +4,8 @@ import (
 	"fmt"
 )
 
-// OidcConfig ...
-type OidcConfig struct {
+// OIDCConfig ...
+type OIDCConfig struct {
 	Address string `yaml:"address"`
 
 	ClusterName            string   `yaml:"clusterName" envconfig:"cluster_name"`
@@ -29,9 +29,9 @@ type OidcConfig struct {
 }
 
 // NewConfig returns a Config struct from serialized config file
-func NewConfig(configFile string) (*OidcConfig, error) {
+func NewConfig(configFile string) (*OIDCConfig, error) {
 
-	cfg := &OidcConfig{
+	cfg := &OIDCConfig{
 		// Host: "0.0.0.0",
 		Address:                ":9001",
 		IssuerURL:              "http://dex.auth.app.local:9080",
@@ -80,7 +80,7 @@ func NewConfig(configFile string) (*OidcConfig, error) {
 }
 
 // Validate verifies all properties of config struct are intialized
-func (cfg *OidcConfig) Validate() error {
+func (cfg *OIDCConfig) Validate() error {
 	checks := []struct {
 		bad    bool
 		errMsg string

@@ -15,8 +15,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-//NewOidcConnect - start server as OIDC and take in 'config' file as parameter...
-func NewOidcConnect() *cobra.Command {
+//NewOIDCConnect - start server as OIDC and take in 'config' file as parameter...
+func NewOIDCConnect() *cobra.Command {
 	cmd := cobra.Command{
 		Use:   "oidc Server [OPTIONS]",
 		Short: "Run a OIDC authentication server",
@@ -33,7 +33,7 @@ func NewOidcConnect() *cobra.Command {
 			// default hardcode timeout value to 40 mins...
 			bigCache, _ := bigcache.NewBigCache(bigcache.DefaultConfig(40 * time.Minute))
 
-			authOidc := &auth.OidcConnect{
+			authOidc := &auth.OIDCConnect{
 				Log:        log,
 				OidcConfig: cfg,
 				Cache:      bigCache,
