@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	netUrl "net/url"
@@ -66,64 +67,33 @@ func (h *OidcConnect) verifyRequestHandler(ctx context.Context, req *Request, re
 		return
 	}
 
-	// 2. do you have cookies stored ?
-	cookieVal := req.Request.Header.Get("cookie")
+	// 2. check do we have stateid stored in querystring ?
 	var state *store.OidcState
-	// check through and validate cookies
-	if len(cookieVal) > 0 {
-		cookies := strings.Split(cookieVal, ";")
+	var validState bool
 
-		for _, c := range cookies {
-			c = strings.TrimSpace(c)
-			if strings.HasPrefix(c, contourToken) {
-				cookieJSON := c[len(contourToken)+1:]
-				if len(cookieJSON) > 0 {
-					state = store.ConvertToType([]byte(cookieJSON))
-					break
-				}
-
-			}
-		}
+	stateToken := url.Query().Get(contourAuth)
+	stateByte, err := h.Cache.Get(stateToken)
+	if err == nil {
+		state = store.ConvertToType(stateByte)
 	}
 
-	// no state info in cookies header , check request query string
-	if state == nil {
-		//check State token
-		stateToken := url.Query().Get(contourAuth)
-		stateByte, err := h.Cache.Get(stateToken)
-		if err == nil {
-			state = store.ConvertToType(stateByte)
-		}
-	}
-
-	// no state found, redirect this to IDP for login
-	if state == nil {
-		h.loginHandler(req, resp, url)
-		return
-	}
-
+	// 2.1 if its available, lets check and make sure this is a valid state
 	//re-initialize provider to refresh the context, this seems like bugs with coreos go-oidc module
 	provider, err := h.initProvider(ctx)
 	if err != nil {
-		h.Log.Info(fmt.Sprintf("failed to verify ID token: %v", err))
-		h.loginHandler(req, resp, url)
+		h.Log.Info(fmt.Sprintf("fail to initialize provider: %v", err))
 		return
 	}
 
-	verifier := provider.Verifier(&oidc.Config{ClientID: h.OidcConfig.ClientID, SkipIssuerCheck: true})
+	validState = h.isStateValid(ctx, state, provider)
 
-	//verify token and signature
-	idToken, err := verifier.Verify(ctx, state.IDToken)
-	if err != nil {
-		h.Log.Info(fmt.Sprintf("failed to verify ID token: %v", err))
-		h.loginHandler(req, resp, url)
-		return
+	// not a valid state from querystring, thus we check state from cookie
+	if !validState {
+		state, _ = h.getStateFromCookie(ctx, req)
+		validState = h.isStateValid(ctx, state, provider)
 	}
 
-	//try to claim
-	var claims json.RawMessage
-	if err := idToken.Claims(&claims); err != nil {
-		h.Log.Info(fmt.Sprintf("error decoding ID token claims: %v", err))
+	if !validState {
 		h.loginHandler(req, resp, url)
 		return
 	}
@@ -205,6 +175,56 @@ func (h *OidcConnect) callbackHandler(ctx context.Context, req *Request, resp *R
 
 	// TODO .. may need to rebuild this, in case user could have other query parameters
 	resp.Response.Header.Add("Location", fmt.Sprintf("http://%s?%s=%s", state.RequestPath, contourAuth, state.OAuthState))
+}
+
+func (h *OidcConnect) isStateValid(ctx context.Context, state *store.OidcState, provider *oidc.Provider) bool {
+
+	if state == nil {
+		return false
+	}
+
+	verifier := provider.Verifier(&oidc.Config{ClientID: h.OidcConfig.ClientID, SkipIssuerCheck: true})
+
+	//verify token and signature
+	idToken, err := verifier.Verify(ctx, state.IDToken)
+	if err != nil {
+		h.Log.Info(fmt.Sprintf("failed to verify ID token: %v", err))
+		return false
+	}
+
+	//try to claim
+	var claims json.RawMessage
+	if err := idToken.Claims(&claims); err != nil {
+		h.Log.Info(fmt.Sprintf("error decoding ID token claims: %v", err))
+		return false
+	}
+
+	return true
+}
+
+func (h *OidcConnect) getStateFromCookie(ctx context.Context, req *Request) (*store.OidcState, error) {
+
+	// do you have cookies stored ?
+	cookieVal := req.Request.Header.Get("cookie")
+	var state *store.OidcState
+	// check through and validate cookies
+	if len(cookieVal) > 0 {
+		cookies := strings.Split(cookieVal, ";")
+
+		for _, c := range cookies {
+			c = strings.TrimSpace(c)
+			if strings.HasPrefix(c, contourToken) {
+				cookieJSON := c[len(contourToken)+1:]
+				if len(cookieJSON) > 0 {
+					state = store.ConvertToType([]byte(cookieJSON))
+					return state, nil
+				}
+
+			}
+		}
+	}
+
+	return nil, errors.New("No Cookies available")
 }
 
 func (h *OidcConnect) initProvider(ctx context.Context) (*oidc.Provider, error) {
