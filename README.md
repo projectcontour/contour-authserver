@@ -98,6 +98,33 @@ the `testserver` and `htpasswd` backends. For developer deployments,
 
 There are no versioned releases or container images yet.
 
+# Releasing `contour-authserver`
+
+Maintainers who need to release a new version of `contour-authserver`
+can follow the following steps:
+
+```bash
+# Ensure that you have a Github token either in $GITHUB_TOKEN or in ~/.config/goreleaser/github_token.
+# Ensure that goreleaser is installed.
+
+# Tag the release.
+$ ./hack/make-release-tag.sh $OLDVERS $NEWVERS
+
+# Push the release tag to Github.
+$ git push origin $NEWVERS
+
+# Build and release binaries and Docker images.
+$ make release
+
+# Log in with the Contour build account to push the images.
+$ docker login -u projectcontourbuilder
+$ docker push projectcontour/contour-authserver:$NEWVERS
+$ docker push projectcontour/contour-authserver:latest
+
+# Log out of the Contour build account.
+$ docker logout
+```
+
 [1]: https://httpd.apache.org/docs/current/programs/htpasswd.html
 [2]: https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/annotations/#authentication
 [3]: https://tools.ietf.org/html/rfc7617

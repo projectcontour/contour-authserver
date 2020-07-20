@@ -79,10 +79,21 @@ docker-build: ## Build the docker image
 docker-push: ## Push the docker image
 	docker push ${IMG}
 
+.PHONY: release
+release: ## Build and publish a release to Github
+	# Check there is a token.
+	[[ -n "$$GITHUB_TOKEN" ]] || [[ -r ~/.config/goreleaser/github_token ]]
+	# Check we are on a tag.
+	git describe --exact-match >/dev/null
+	# Do a full dry-run.
+	goreleaser check
+	SHA=$(SHA) VERSION=$(VERSION) goreleaser release --rm-dist
+
 .PHONY: clean
 clean:
 	@rm -rf cover.out
-	@rm bin/$(BIN)
+	@rm -rf bin
+	@rm -rf dist
 
 .PHONY: help
 help:
