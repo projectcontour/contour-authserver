@@ -41,7 +41,7 @@ func main() {
 
 	root.AddCommand(cli.Defaults(cli.NewTestserverCommand()))
 	root.AddCommand(cli.Defaults(cli.NewHtpasswdCommand()))
-	root.AddCommand(cli.Defaults(cli.NewOidcConnect()))
+	root.AddCommand(cli.Defaults(cli.NewOIDCConnect()))
 
 	if err := root.Execute(); err != nil {
 		if msg := err.Error(); msg != "" {
