@@ -17,16 +17,17 @@ type OIDCState struct {
 	OAuthState  string `json:"oauth-state"`
 }
 
+// Iota token
 const (
-	statusNeedToken = iota
-	statusTokenReady
+	StatusNeedToken = iota
+	StatusTokenReady
 )
 
 // NewState .... create new state to store token for OIDC
 func NewState() *OIDCState {
 
 	state := &OIDCState{
-		Status: statusNeedToken,
+		Status: StatusNeedToken,
 	}
 
 	return state
@@ -45,11 +46,11 @@ func ConvertToType(value []byte) *OIDCState {
 }
 
 func (s *OIDCState) IsNewToken() bool {
-	return (s.Status == statusNeedToken)
+	return (s.Status == StatusNeedToken)
 }
 
 func (s *OIDCState) IsTokenReady() bool {
-	return (s.Status == statusTokenReady)
+	return (s.Status == StatusTokenReady)
 }
 
 // Generate new Oauth State

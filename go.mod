@@ -15,8 +15,10 @@ require (
 	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45
 	google.golang.org/genproto v0.0.0-20190819201941-24fa4b261c55
 	google.golang.org/grpc v1.26.0
+	gotest.tools v2.2.0+incompatible
 	k8s.io/api v0.18.4
 	k8s.io/apimachinery v0.18.4
 	k8s.io/client-go v0.18.4
+	gotest.tools v2.2.0+incompatible
 	sigs.k8s.io/controller-runtime v0.6.0
 )
