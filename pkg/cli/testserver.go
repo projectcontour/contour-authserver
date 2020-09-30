@@ -41,7 +41,7 @@ func NewTestserverCommand() *cobra.Command {
 				return ExitErrorf(EX_CONFIG, "invalid TLS configuration: %s", err)
 			}
 
-			auth.RegisterServer(srv, &auth.Htpasswd{Log: log})
+			auth.RegisterServer(srv, &auth.Testserver{Log: log})
 
 			log.Info("started serving", "address", mustString(cmd.Flags().GetString("address")))
 			return auth.RunServer(listener, srv, ctrl.SetupSignalHandler())
