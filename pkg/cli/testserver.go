@@ -14,36 +14,13 @@
 package cli
 
 import (
-	"fmt"
 	"net"
-	"os"
 
 	"github.com/projectcontour/contour-authserver/pkg/auth"
-	"github.com/projectcontour/contour-authserver/pkg/version"
-	"google.golang.org/grpc"
-	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/spf13/cobra"
+	ctrl "sigs.k8s.io/controller-runtime"
 )
-
-func mustString(s string, err error) string {
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %s\n", version.Progname, err)
-		os.Exit(int(EX_CONFIG))
-	}
-
-	return s
-}
-
-func anyString(values ...string) bool {
-	for _, s := range values {
-		if s != "" {
-			return true
-		}
-	}
-
-	return false
-}
 
 // NewTestserverCommand ...
 func NewTestserverCommand() *cobra.Command {
@@ -59,28 +36,11 @@ func NewTestserverCommand() *cobra.Command {
 				return ExitError{EX_CONFIG, err}
 			}
 
-			opts := []grpc.ServerOption{
-				grpc.MaxConcurrentStreams(1 << 20),
+			srv, err := DefaultServer(cmd)
+			if err != nil {
+				return ExitErrorf(EX_CONFIG, "invalid TLS configuration: %s", err)
 			}
 
-			if anyString(
-				mustString(cmd.Flags().GetString("tls-cert-path")),
-				mustString(cmd.Flags().GetString("tls-key-path")),
-				mustString(cmd.Flags().GetString("tls-ca-path")),
-			) {
-				creds, err := auth.NewServerCredentials(
-					mustString(cmd.Flags().GetString("tls-cert-path")),
-					mustString(cmd.Flags().GetString("tls-key-path")),
-					mustString(cmd.Flags().GetString("tls-ca-path")),
-				)
-				if err != nil {
-					return ExitErrorf(EX_CONFIG, "invalid TLS configuration: %s", err)
-				}
-
-				opts = append(opts, grpc.Creds(creds))
-			}
-
-			srv := grpc.NewServer(opts...)
 			auth.RegisterServer(srv, &auth.Htpasswd{Log: log})
 
 			log.Info("started serving", "address", mustString(cmd.Flags().GetString("address")))

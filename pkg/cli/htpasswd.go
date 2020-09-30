@@ -17,8 +17,8 @@ import (
 	"net"
 
 	"github.com/projectcontour/contour-authserver/pkg/auth"
+
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -74,34 +74,17 @@ func NewHtpasswdCommand() *cobra.Command {
 				return ExitError{EX_CONFIG, err}
 			}
 
-			opts := []grpc.ServerOption{
-				grpc.MaxConcurrentStreams(1 << 20),
+			srv, err := DefaultServer(cmd)
+			if err != nil {
+				return ExitErrorf(EX_CONFIG, "invalid TLS configuration: %s", err)
 			}
 
-			if anyString(
-				mustString(cmd.Flags().GetString("tls-cert-path")),
-				mustString(cmd.Flags().GetString("tls-key-path")),
-				mustString(cmd.Flags().GetString("tls-ca-path")),
-			) {
-				creds, err := auth.NewServerCredentials(
-					mustString(cmd.Flags().GetString("tls-cert-path")),
-					mustString(cmd.Flags().GetString("tls-key-path")),
-					mustString(cmd.Flags().GetString("tls-ca-path")),
-				)
-				if err != nil {
-					return ExitErrorf(EX_CONFIG, "invalid TLS configuration: %s", err)
-				}
-
-				opts = append(opts, grpc.Creds(creds))
-			}
+			auth.RegisterServer(srv, htpasswd)
 
 			errChan := make(chan error)
 			stopChan := ctrl.SetupSignalHandler()
 
 			go func() {
-				srv := grpc.NewServer(opts...)
-				auth.RegisterServer(srv, htpasswd)
-
 				log.Info("started authorization server",
 					"address", mustString(cmd.Flags().GetString("address")),
 					"realm", htpasswd.Realm)
