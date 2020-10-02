@@ -52,7 +52,7 @@ Flags:
 
 The `htpasswd` backend implements [HTTP basic authentication][3]
 against a set of Secrets that contain [htpasswd][1] formatted data.
-The htpasswd data must be stored in the `data` key, which is compatible
+The htpasswd data must be stored in the `auth` key, which is compatible
 with ingress-nginx [`auth-file` Secrets][2].
 
 The `htpasswd` backend only accesses Secrets that are
