@@ -1,4 +1,7 @@
-# Build the manager binary
+# Build the contour-authserver binary.
+#
+# Note that this is not used for releasing, since goreleaser handles that.
+
 FROM golang:1.14 as base
 
 ENV GO111MODULE=on

@@ -1,3 +1,16 @@
+// Copyright Project Contour Authors
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package auth
 
 import (
@@ -10,15 +23,16 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/tg123/go-htpasswd"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	// LabelAuthType labels Secrets that can be used for basic Auth.
-	LabelAuthType = "projectcontour.io/auth-type"
-	// LabelAuthRealm labels Secrets that match our authentication realm
-	LabelAuthRealm = "projectcontour.io/auth-realm"
+	// AnnotationAuthType labels Secrets that can be used for basic Auth.
+	AnnotationAuthType = "projectcontour.io/auth-type"
+	// AnnotationAuthRealm labels Secrets that match our authentication realm
+	AnnotationAuthRealm = "projectcontour.io/auth-realm"
 )
 
 // Htpasswd watches Secrets for htpasswd files and uses them for HTTP Basic Authentication.
@@ -27,6 +41,7 @@ type Htpasswd struct {
 	Realm     string
 	Client    client.Client
 	Passwords *htpasswd.File
+	Selector  labels.Selector
 
 	Lock sync.Mutex
 }
@@ -113,20 +128,31 @@ func (h *Htpasswd) Check(ctx context.Context, request *Request) (*Response, erro
 
 // Reconcile ...
 func (h *Htpasswd) Reconcile(ctrl.Request) (ctrl.Result, error) {
-	// First, find all the basic auth secrets for this realm.
+	var opts []client.ListOption
+
+	if h.Selector != nil {
+		opts = append(opts, client.MatchingLabelsSelector{Selector: h.Selector})
+	}
+
+	// First, find all the auth secrets for this realm.
 	secrets := &v1.SecretList{}
-	if err := h.Client.List(context.Background(), secrets,
-		client.MatchingLabels{LabelAuthType: "basic"},
-		client.HasLabels{LabelAuthRealm}); err != nil {
+	if err := h.Client.List(context.Background(), secrets, opts...); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	passwdData := bytes.Buffer{}
 
 	for _, s := range secrets.Items {
-		if s.Labels[LabelAuthRealm] != h.Realm &&
-			s.Labels[LabelAuthRealm] != "*" {
+		// Only look at basic auth secrets.
+		if s.Annotations[AnnotationAuthType] != "basic" {
 			continue
+		}
+
+		// Accept the secret if it is for our realm or for any realm.
+		if realm := s.Annotations[AnnotationAuthRealm]; realm != "" {
+			if realm != h.Realm && realm != "*" {
+				continue
+			}
 		}
 
 		// Check for the "auth" key, which is the format used by ingress-nginx.

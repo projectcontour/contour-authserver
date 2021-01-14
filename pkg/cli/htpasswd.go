@@ -1,11 +1,25 @@
+// Copyright Project Contour Authors
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package cli
 
 import (
 	"net"
 
 	"github.com/projectcontour/contour-authserver/pkg/auth"
+
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -39,10 +53,16 @@ func NewHtpasswdCommand() *cobra.Command {
 				return ExitErrorf(EX_CONFIG, "failed to create controller manager: %s", err)
 			}
 
+			secretsSelector, err := labels.Parse(mustString(cmd.Flags().GetString("selector")))
+			if err != nil {
+				return ExitErrorf(EX_CONFIG, "failed to parse secrets selector: %s", err)
+			}
+
 			htpasswd := &auth.Htpasswd{
-				Log:    log,
-				Client: mgr.GetClient(),
-				Realm:  mustString(cmd.Flags().GetString("auth-realm")),
+				Log:      log,
+				Client:   mgr.GetClient(),
+				Realm:    mustString(cmd.Flags().GetString("auth-realm")),
+				Selector: secretsSelector,
 			}
 
 			if err := htpasswd.RegisterWithManager(mgr); err != nil {
@@ -54,34 +74,17 @@ func NewHtpasswdCommand() *cobra.Command {
 				return ExitError{EX_CONFIG, err}
 			}
 
-			opts := []grpc.ServerOption{
-				grpc.MaxConcurrentStreams(1 << 20),
+			srv, err := DefaultServer(cmd)
+			if err != nil {
+				return ExitErrorf(EX_CONFIG, "invalid TLS configuration: %s", err)
 			}
 
-			if anyString(
-				mustString(cmd.Flags().GetString("tls-cert-path")),
-				mustString(cmd.Flags().GetString("tls-key-path")),
-				mustString(cmd.Flags().GetString("tls-ca-path")),
-			) {
-				creds, err := auth.NewServerCredentials(
-					mustString(cmd.Flags().GetString("tls-cert-path")),
-					mustString(cmd.Flags().GetString("tls-key-path")),
-					mustString(cmd.Flags().GetString("tls-ca-path")),
-				)
-				if err != nil {
-					return ExitErrorf(EX_CONFIG, "invalid TLS configuration: %s", err)
-				}
-
-				opts = append(opts, grpc.Creds(creds))
-			}
+			auth.RegisterServer(srv, htpasswd)
 
 			errChan := make(chan error)
 			stopChan := ctrl.SetupSignalHandler()
 
 			go func() {
-				srv := grpc.NewServer(opts...)
-				auth.RegisterServer(srv, htpasswd)
-
 				log.Info("started authorization server",
 					"address", mustString(cmd.Flags().GetString("address")),
 					"realm", htpasswd.Realm)
@@ -115,6 +118,7 @@ func NewHtpasswdCommand() *cobra.Command {
 	// Controller flags.
 	cmd.Flags().String("metrics-address", ":8080", "The address the metrics endpoint binds to.")
 	cmd.Flags().StringSlice("watch-namespaces", []string{}, "The list of namespaces to watch for Secrets.")
+	cmd.Flags().String("selector", "", "Selector (label-query) to filter Secrets, supports '=', '==', and '!='.")
 
 	// GRPC flags.
 	cmd.Flags().String("address", ":9090", "The address the authentication endpoint binds to.")

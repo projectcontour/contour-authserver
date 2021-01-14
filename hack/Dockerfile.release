@@ -1,0 +1,3 @@
+FROM scratch
+COPY contour-authserver /
+ENTRYPOINT ["/contour-authserver"]

@@ -1,0 +1,56 @@
+project_name: contour-authserver
+before:
+  hooks:
+    - go mod download
+    - go generate ./...
+builds:
+- env:
+  - CGO_ENABLED=0
+  goarch:
+  - amd64
+  goos:
+  - linux
+  - darwin
+  ldflags:
+  - -s
+  - -w
+  - -X github.com/projectcontour/contour-authserver/pkg/version.Progname={{ .ProjectName }}
+  - -X github.com/projectcontour/contour-authserver/pkg/version.Version={{ .Env.VERSION }}
+  - -X github.com/projectcontour/contour-authserver/pkg/version.Sha={{ .Env.SHA }}
+  - -X github.com/projectcontour/contour-authserver/pkg/version.BuildDate={{ .Date }}
+archives:
+- replacements:
+    darwin: Darwin
+    linux: Linux
+    windows: Windows
+    386: i386
+    amd64: x86_64
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{ .Tag }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+    - '^docs:'
+    - '^test:'
+dockers:
+- goarch: amd64
+  goos: linux
+  dockerfile: hack/Dockerfile.release
+  skip_push: true
+  image_templates:
+    - "projectcontour/{{ .ProjectName }}:{{ .Env.VERSION }}"
+    - "projectcontour/{{ .ProjectName }}:latest"
+  build_flag_templates:
+  - "--pull"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Env.VERSION}}"
+  - "--label=org.opencontainers.image.url=https://projectcontour.io/"
+  - "--label=org.opencontainers.image.documentation=https://projectcontour.io/"
+  - "--label=org.opencontainers.image.vendor=Project Contour"
+  - "--label=org.opencontainers.image.licenses=Apache-2.0"
+  - "--label=org.opencontainers.image.title=Contour Authserver"
+  - "--label=org.opencontainers.image.description=Contour Authorization Server"
