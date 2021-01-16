@@ -8,7 +8,6 @@ import (
 	"github.com/projectcontour/contour-authserver/pkg/auth"
 	"github.com/projectcontour/contour-authserver/pkg/config"
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
 
 	"github.com/allegro/bigcache"
 
@@ -26,9 +25,16 @@ func NewOIDCConnect() *cobra.Command {
 
 			cfgFile, err := cmd.Flags().GetString("config")
 			cfg, err := config.NewConfig(cfgFile)
+
+			if err != nil {
+				return ExitError{EX_CONFIG, err}
+			}
+
 			if cfg == nil {
 				log.Info("config is empty ")
 			}
+
+			log.Info("init oidc... ")
 
 			// default hardcode timeout value to 40 mins...
 			bigCache, _ := bigcache.NewBigCache(bigcache.DefaultConfig(40 * time.Minute))
@@ -45,21 +51,11 @@ func NewOIDCConnect() *cobra.Command {
 				return ExitError{EX_CONFIG, err}
 			}
 
-			opts := []grpc.ServerOption{
-				grpc.MaxConcurrentStreams(1 << 20),
+			srv, err := DefaultServer(cmd)
+			if err != nil {
+				return ExitErrorf(EX_CONFIG, "invalid TLS configuration: %s", err)
 			}
 
-			if anyString(cfg.GrpcTLSCertPath, cfg.GrpcTLSKeyPath, cfg.GrpcTLSCAPath) {
-
-				creds, err := auth.NewServerCredentials(cfg.GrpcTLSCertPath, cfg.GrpcTLSKeyPath, cfg.GrpcTLSCAPath)
-				if err != nil {
-					return ExitErrorf(EX_CONFIG, "invalid TLS configuration: %s", err)
-				}
-
-				opts = append(opts, grpc.Creds(creds))
-			}
-
-			srv := grpc.NewServer(opts...)
 			auth.RegisterServer(srv, authOidc)
 
 			log.Info("started serving", "address", authOidc.OidcConfig.Address)
@@ -67,6 +63,9 @@ func NewOIDCConnect() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().String("config", "", "The config file to use.")
+	cmd.Flags().String("config", "", "Path to config file ( Yaml format ).")
+	cmd.Flags().String("tls-cert-path", "", "Path to the TLS server certificate.")
+	cmd.Flags().String("tls-ca-path", "", "Path to the TLS CA certificate bundle.")
+	cmd.Flags().String("tls-key-path", "", "Path to the TLS server key.")
 	return &cmd
 }
