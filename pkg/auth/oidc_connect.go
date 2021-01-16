@@ -37,6 +37,13 @@ var _ Checker = &OIDCConnect{}
 //Check ...
 func (h *OIDCConnect) Check(ctx context.Context, req *Request) (*Response, error) {
 
+	h.Log.Info("checking....")
+	h.Log.Info("checking request",
+		"host", req.Request.Host,
+		"path", req.Request.URL.Path,
+		"id", req.ID,
+	)
+
 	if h.provider == nil {
 		h.provider, _ = h.initProvider(ctx)
 	}
@@ -49,7 +56,7 @@ func (h *OIDCConnect) Check(ctx context.Context, req *Request) (*Response, error
 		},
 	}
 
-	// h.Log.Info(formatRequest(req))
+	h.Log.Info(formatRequest(req))
 	url := parseURL(req)
 	h.verifyRequestHandler(ctx, req, &resp, url)
 
@@ -89,7 +96,6 @@ func (h *OIDCConnect) verifyRequestHandler(ctx context.Context, req *Request, re
 			h.Log.Info(fmt.Sprintf("fail to initialize provider: %v", err))
 			return
 		}
-
 		validState = h.isStateValid(ctx, state, provider)
 
 	}
