@@ -7,6 +7,7 @@ require (
 	github.com/coreos/go-oidc v2.1.0+incompatible
 	github.com/envoyproxy/go-control-plane v0.9.5
 	github.com/go-logr/logr v0.1.0
+	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/mattn/go-isatty v0.0.8
 	github.com/spf13/cobra v1.0.0
 	github.com/stretchr/testify v1.4.0
@@ -15,10 +16,10 @@ require (
 	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45
 	google.golang.org/genproto v0.0.0-20190819201941-24fa4b261c55
 	google.golang.org/grpc v1.26.0
+	gopkg.in/yaml.v2 v2.2.8
 	gotest.tools v2.2.0+incompatible
 	k8s.io/api v0.18.4
 	k8s.io/apimachinery v0.18.4
 	k8s.io/client-go v0.18.4
-	gotest.tools v2.2.0+incompatible
 	sigs.k8s.io/controller-runtime v0.6.0
 )
