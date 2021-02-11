@@ -21,7 +21,7 @@ func NewOIDCConnect() *cobra.Command {
 		Short: "Run a OIDC authentication server",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			log := ctrl.Log.WithName("auth.oidcConnect")
+			log := ctrl.Log.WithName("auth.oidc")
 
 			cfgFile, err := cmd.Flags().GetString("config")
 			cfg, err := config.NewConfig(cfgFile)
@@ -36,8 +36,7 @@ func NewOIDCConnect() *cobra.Command {
 
 			log.Info("init oidc... ")
 
-			// default hardcode timeout value to 40 mins...
-			bigCache, _ := bigcache.NewBigCache(bigcache.DefaultConfig(40 * time.Minute))
+			bigCache, _ := bigcache.NewBigCache(bigcache.DefaultConfig(time.Duration(cfg.CacheTimeout) * time.Minute))
 
 			authOidc := &auth.OIDCConnect{
 				Log:        log,

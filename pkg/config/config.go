@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"github.com/kelseyhightower/envconfig"
 	"gopkg.in/yaml.v2"
 )
 
@@ -12,18 +11,20 @@ import (
 type OIDCConfig struct {
 	Address string `yaml:"address"`
 
-	ClusterName            string   `yaml:"clusterName" envconfig:"cluster_name"`
-	IssuerURL              string   `yaml:"issuerURL" envconfig:"issuer_url"`
-	ClientID               string   `yaml:"clientID" envconfig:"client_id"`
-	ClientSecret           string   `yaml:"clientSecret" envconfig:"client_secret"`
-	AllowEmptyClientSecret bool     `yaml:"allowEmptyClientSecret" envconfig:"allow_empty_client_secret"`
-	RedirectURL            string   `yaml:"redirectURL" envconfig:"redirect_url"`   // http://gangway.auth.app.local:9080
-	RedirectPath           string   `yaml:"redirectPath" envconfig:"redirect_path"` // /callback
-	Scopes                 []string `yaml:"scopes" envconfig:"scopes"`
-	UsernameClaim          string   `yaml:"usernameClaim" envconfig:"username_claim"`
-	EmailClaim             string   `yaml:"emailClaim" envconfig:"email_claim"`
-	ServeTLS               bool     `yaml:"serveTLS" envconfig:"serve_tls"`
-	Audience               string   `yaml:"audience" envconfig:"audience"`
+	ClusterName            string   `yaml:"clusterName"`
+	IssuerURL              string   `yaml:"issuerURL"`
+	ClientID               string   `yaml:"clientID"`
+	ClientSecret           string   `yaml:"clientSecret"`
+	AllowEmptyClientSecret bool     `yaml:"allowEmptyClientSecret"`
+	RedirectURL            string   `yaml:"redirectURL"`  // http://gangway.auth.app.local:9080
+	RedirectPath           string   `yaml:"redirectPath"` // /callback
+	Scopes                 []string `yaml:"scopes"`
+	UsernameClaim          string   `yaml:"usernameClaim"`
+	EmailClaim             string   `yaml:"emailClaim"`
+	ServeTLS               bool     `yaml:"serveTLS"`
+	Audience               string   `yaml:"audience"`
+	CacheTimeout           int32    `yaml:"cacheTimeout"`
+	SkipIssuerCheck        bool     `yaml:"skipIssuerCheck"`
 
 	// TODO :: decide wether should this be use
 	SessionSecurityKey string `yaml:"sessionSecurityKey" envconfig:"SESSION_SECURITY_KEY"`
@@ -33,17 +34,8 @@ type OIDCConfig struct {
 func NewConfig(configFile string) (*OIDCConfig, error) {
 
 	cfg := &OIDCConfig{
-		Address:                ":9001",
-		IssuerURL:              "http://dex.auth.app.local:9080",
-		RedirectURL:            "http://192.168.1.134:9500",
-		RedirectPath:           "/callback",
-		AllowEmptyClientSecret: false,
-		Scopes:                 []string{"openid", "profile", "email", "offline_access"},
-		UsernameClaim:          "nickname",
-		EmailClaim:             "",
-		ServeTLS:               false,
-		ClientID:               "bender",
-		ClientSecret:           "googledocs",
+		CacheTimeout:    40,
+		SkipIssuerCheck: false,
 	}
 
 	if configFile != "" {
@@ -55,14 +47,11 @@ func NewConfig(configFile string) (*OIDCConfig, error) {
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		return nil, fmt.Errorf("Config file path is required")
 	}
 
-	err := envconfig.Process("contour-auth", cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	err = cfg.Validate()
+	err := cfg.Validate()
 	if err != nil {
 		return nil, err
 	}

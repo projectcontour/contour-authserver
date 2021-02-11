@@ -3,10 +3,10 @@ package auth
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 
 	"github.com/allegro/bigcache"
@@ -37,7 +37,6 @@ var _ Checker = &OIDCConnect{}
 //Check ...
 func (h *OIDCConnect) Check(ctx context.Context, req *Request) (*Response, error) {
 
-	h.Log.Info("checking....")
 	h.Log.Info("checking request",
 		"host", req.Request.Host,
 		"path", req.Request.URL.Path,
@@ -48,34 +47,36 @@ func (h *OIDCConnect) Check(ctx context.Context, req *Request) (*Response, error
 		h.provider, _ = h.initProvider(ctx)
 	}
 
-	// Generate response object.
-	resp := Response{
-		Response: http.Response{
-			StatusCode: http.StatusUnauthorized,
-			Header:     http.Header{},
-		},
+	// h.Log.Info(formatRequest(req))
+	url := parseURL(req)
+
+	// 1. Callback Request ?
+	if url.Path == h.OidcConfig.RedirectPath {
+		resp, err := h.callbackHandler(ctx, req, url)
+		return &resp, err
 	}
 
-	h.Log.Info(formatRequest(req))
-	url := parseURL(req)
-	h.verifyRequestHandler(ctx, req, &resp, url)
+	// 2. Check state validity
+	resp, valid, err := h.isValidState(ctx, req, url)
+
+	if err != nil {
+		return &resp, err
+	}
+
+	// 3. invalid state, redirect to login handler
+	if !valid {
+		resp = h.loginHandler(req, url)
+		return &resp, nil
+	}
 
 	return &resp, nil
+
 }
 
-func (h *OIDCConnect) verifyRequestHandler(ctx context.Context, req *Request, resp *Response, url *url.URL) {
+func (h *OIDCConnect) isValidState(ctx context.Context, req *Request, url *url.URL) (Response, bool, error) {
 
-	//Request verification handler ...
-
-	// 1. Are you coming from IDP callback ?
-	if url.Path == h.OidcConfig.RedirectPath {
-		h.callbackHandler(ctx, req, resp, url)
-		return
-	}
-
-	// 2. Check do we have stateid stored in querystring ?
+	// 1. Check do we have stateid stored in querystring ?
 	var state *store.OIDCState
-	validState := false
 
 	stateToken := url.Query().Get(stateQueryParamName)
 	stateByte, err := h.Cache.Get(stateToken)
@@ -83,88 +84,97 @@ func (h *OIDCConnect) verifyRequestHandler(ctx context.Context, req *Request, re
 		state = store.ConvertToType(stateByte)
 	}
 
-	// 2.1 State not found, try to retrieve from cookies.
+	// 1.1 State not found, try to retrieve from cookies.
 	if state == nil {
 		state, _ = h.getStateFromCookie(ctx, req)
 	}
 
-	//2.2 State exist, proceed with token validation.
+	//1.2 State exist, proceed with token validation.
 	if state != nil {
+
 		// Re-initialize provider to refresh the context, this seems like bugs with coreos go-oidc module.
 		provider, err := h.initProvider(ctx)
 		if err != nil {
-			h.Log.Info(fmt.Sprintf("fail to initialize provider: %v", err))
-			return
+			h.Log.Error(err, "fail to initialize provider")
+			return createResponse(http.StatusInternalServerError), false, err
 		}
-		validState = h.isStateValid(ctx, state, provider)
 
+		if h.isValidStateToken(ctx, state, provider) {
+
+			stateJSON, _ := json.Marshal(state)
+			// Restore cookies.
+			resp := createResponse(http.StatusOK)
+			resp.Response.Header.Add(oauthTokenName, string(stateJSON))
+			h.Cache.Delete(state.OAuthState)
+
+			return resp, true, nil
+		}
 	}
 
-	if validState {
-		stateJSON, _ := json.Marshal(state)
-		// Restore cookies.
-		resp.Response.Header.Add(oauthTokenName, string(stateJSON))
-		h.Cache.Delete(state.OAuthState)
-		resp.Allow = true
-
-	} else {
-		// 2.3 Route to login handler.
-		h.loginHandler(req, resp, url)
-	}
-
+	// return empty response, will direct to loginHandler
+	return Response{}, false, nil
 }
 
-func (h *OIDCConnect) loginHandler(req *Request, resp *Response, u *url.URL) {
+func (h *OIDCConnect) loginHandler(req *Request, u *url.URL) Response {
 
 	state := store.NewState()
 	state.GenerateOauthState()
-	state.RequestPath = u.Host + u.Path
-
-	resp.Response.Header.Add(oauthTokenName, "")
+	state.RequestPath = path.Join(u.Host, u.Path)
+	state.Scheme = u.Scheme
 
 	authCodeURL := h.oauth2Config().AuthCodeURL(state.OAuthState)
 	byteState := store.ConvertToByte(state)
-
 	h.Cache.Set(state.OAuthState, byteState)
-	resp.Response.StatusCode = http.StatusFound
+
+	resp := createResponse(http.StatusFound)
+	resp.Response.Header.Add(oauthTokenName, "")
 	resp.Response.Header.Add("Location", authCodeURL)
+
+	return resp
 }
 
-func (h *OIDCConnect) callbackHandler(ctx context.Context, req *Request, resp *Response, u *url.URL) {
+func (h *OIDCConnect) callbackHandler(ctx context.Context, req *Request, u *url.URL) (Response, error) {
+
+	// resp := createDefaultResponse()
 
 	// 1. Get all variable needed.
 	oauthState := u.Query().Get("state")
 	code := u.Query().Get("code")
 
-	// Check state and code validity.
+	// 2 Check state and code validity.
 	if code == "" || oauthState == "" {
-		resp.Response.StatusCode = http.StatusBadRequest
-		resp.Allow = false
-		return
+
+		// 2.1 Code and State is empty, return Bad Request
+		err := fmt.Errorf("Code ans State is not available")
+		return createResponse(http.StatusBadRequest), err
 	}
 
 	stateByte, err := h.Cache.Get(oauthState)
 	if err != nil {
-		h.Log.Info("Invalid state, expected " + oauthState + " not found ")
-		resp.Response.StatusCode = http.StatusBadRequest
-		resp.Allow = false
-		return
+
+		// 2.2 State invalid , return  Bad Request
+		h.Log.Error(err, "Invalid state, expected oAuthState not found", "oauthState", oauthState)
+		return createResponse(http.StatusBadRequest), err
 	}
 
-	// Retrieve token.
+	// Retrieve token. and check token validity
 	context := oidc.ClientContext(ctx, h.HTTPClient)
 	token, err := h.oauth2Config().Exchange(context, code)
 	if err != nil {
-		h.Log.Info(err.Error())
+
+		// 2.3.1 Token invalid, return Internal Server Error
+		h.Log.Error(err, "Token exchange error")
+		return createResponse(http.StatusInternalServerError), err
 	}
 
 	rawIDToken, ok := token.Extra("id_token").(string)
-
 	if !ok {
-		resp.Response.StatusCode = http.StatusInternalServerError
-		resp.Allow = false
-		return
+		// 2.3.2 Token invalid, return Internal Server Error
+		return createResponse(http.StatusInternalServerError), fmt.Errorf("Invalid token id")
+
 	}
+
+	// 3. success case, allow proceed.
 
 	//Store token.
 	state := store.ConvertToType(stateByte)
@@ -175,20 +185,25 @@ func (h *OIDCConnect) callbackHandler(ctx context.Context, req *Request, resp *R
 	h.Cache.Set(state.OAuthState, stateByte)
 
 	// Set  redirection.
-	resp.Response.StatusCode = http.StatusTemporaryRedirect
+	resp := createResponse(http.StatusTemporaryRedirect)
 	resp.Response.Header.Add(stateQueryParamName, state.OAuthState)
 
 	// TODO .. may need to rebuild this, in case user could have other query parameters
-	resp.Response.Header.Add("Location", fmt.Sprintf("http://%s?%s=%s", state.RequestPath, stateQueryParamName, state.OAuthState))
+	resp.Response.Header.Add("Location", fmt.Sprintf("%s://%s?%s=%s", state.Scheme, state.RequestPath, stateQueryParamName, state.OAuthState))
+
+	return resp, nil
 }
 
-func (h *OIDCConnect) isStateValid(ctx context.Context, state *store.OIDCState, provider *oidc.Provider) bool {
+func (h *OIDCConnect) isValidStateToken(ctx context.Context, state *store.OIDCState, provider *oidc.Provider) bool {
 
 	if state == nil {
 		return false
 	}
 
-	verifier := provider.Verifier(&oidc.Config{ClientID: h.OidcConfig.ClientID, SkipIssuerCheck: true})
+	verifier := provider.Verifier(&oidc.Config{
+		ClientID:        h.OidcConfig.ClientID,
+		SkipIssuerCheck: h.OidcConfig.SkipIssuerCheck,
+	})
 
 	// Verify token and signature.
 	idToken, err := verifier.Verify(ctx, state.IDToken)
@@ -197,10 +212,11 @@ func (h *OIDCConnect) isStateValid(ctx context.Context, state *store.OIDCState, 
 		return false
 	}
 
+	// TODO :: enhancement on claim propagations
 	// Try to claim.
 	var claims json.RawMessage
 	if err := idToken.Claims(&claims); err != nil {
-		h.Log.Info(fmt.Sprintf("error decoding ID token claims: %v", err))
+		h.Log.Error(err, "error decoding ID token")
 		return false
 	}
 
@@ -209,7 +225,6 @@ func (h *OIDCConnect) isStateValid(ctx context.Context, state *store.OIDCState, 
 
 func (h *OIDCConnect) getStateFromCookie(ctx context.Context, req *Request) (*store.OIDCState, error) {
 
-	// Do you have cookies stored ?
 	cookieVal := req.Request.Header.Get("cookie")
 	var state *store.OIDCState
 	// Check through and get the right cookies
@@ -229,13 +244,13 @@ func (h *OIDCConnect) getStateFromCookie(ctx context.Context, req *Request) (*st
 		}
 	}
 
-	return nil, errors.New("No Cookies available")
+	return nil, fmt.Errorf("no %q cookie", oauthTokenName)
 }
 
 func (h *OIDCConnect) initProvider(ctx context.Context) (*oidc.Provider, error) {
 	provider, err := oidc.NewProvider(ctx, h.OidcConfig.IssuerURL)
 	if err != nil {
-		h.Log.Info(fmt.Sprintf("Unable to initialize provider %s", err))
+		h.Log.Error(err, "Unable to initialize provider", "issuerUrl", h.OidcConfig.IssuerURL)
 		return nil, err
 	}
 	return provider, nil
@@ -251,12 +266,36 @@ func (h *OIDCConnect) oauth2Config() *oauth2.Config {
 	}
 }
 
+func createResponseDefault() Response {
+	return createResponse(http.StatusUnauthorized)
+}
+
+func createResponse(status int) Response {
+
+	allow := (status == http.StatusOK)
+
+	return Response{
+		Response: http.Response{
+			StatusCode: status, // defaulted to unauthorized
+			Header:     http.Header{},
+		},
+		Allow: allow,
+	}
+}
+
 func parseURL(req *Request) *url.URL {
 
 	plainURL, _ := url.QueryUnescape(req.Request.URL.String())
 	u, err := url.Parse(plainURL)
+
 	if err != nil {
 		return nil
+	}
+
+	if s, ok := req.Request.Header["X-Forwarded-Proto"]; ok {
+		u.Scheme = s[0]
+	} else {
+		u.Scheme = "http"
 	}
 
 	return u
@@ -269,15 +308,13 @@ func formatRequest(r *Request) string {
 	var request []string
 	// Add the request string
 
-	fmt.Println("============= START =================")
-
 	u := fmt.Sprintf("%v %v %v %v", r.Request.Method, r.Request.URL, r.Request.RequestURI, r.Request.Proto)
 	request = append(request, u)
 	// Add the host
 	request = append(request, fmt.Sprintf("Host: %v", r.Request.Host))
 	// Loop through headers
 	for name, headers := range r.Request.Header {
-		name = strings.ToLower(name)
+		//name = strings.ToLower(name)
 		for _, h := range headers {
 			request = append(request, fmt.Sprintf("%v: %v", name, h))
 		}

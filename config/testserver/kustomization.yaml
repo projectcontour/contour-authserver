@@ -7,6 +7,9 @@ resources:
 - certificate.yaml
 
 images:
+- name: controller
+  newName: contour-authserver
+  newTag: contour-ext-auth-0-ge6509e6
 - name: testserver
   newName: contour-authserver
   newTag: latest
