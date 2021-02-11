@@ -15,6 +15,7 @@ type OIDCState struct {
 	RequestID   string `json:"req-id"`
 	RequestPath string `json:"req-path"`
 	OAuthState  string `json:"oauth-state"`
+	Scheme      string `json:"scheme"`
 }
 
 // Iota token
@@ -33,11 +34,13 @@ func NewState() *OIDCState {
 	return state
 }
 
+// ConvertToByte ... Convert State to Byte
 func ConvertToByte(s *OIDCState) []byte {
 	b, _ := json.Marshal(s)
 	return b
 }
 
+// ConvertToType ... Convert Byte to State
 func ConvertToType(value []byte) *OIDCState {
 	state := &OIDCState{}
 	json.Unmarshal(value, &state)
@@ -45,15 +48,17 @@ func ConvertToType(value []byte) *OIDCState {
 	return state
 }
 
+// IsNewToken ...
 func (s *OIDCState) IsNewToken() bool {
 	return (s.Status == StatusNeedToken)
 }
 
+// IsTokenReady ...
 func (s *OIDCState) IsTokenReady() bool {
 	return (s.Status == StatusTokenReady)
 }
 
-// Generate new Oauth State
+// GenerateOauthState ... Generate new Oauth State
 func (s *OIDCState) GenerateOauthState() string {
 
 	b := make([]byte, 32)

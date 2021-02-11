@@ -2,8 +2,8 @@
 namespace: projectcontour-auth
 
 bases:
-- ../testserver
-- ../htpasswd
+# - ../testserver
+# - ../htpasswd
 - ../oidc
 
 resources:
