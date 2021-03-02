@@ -95,7 +95,7 @@ Flags:
 
 ```
 Oidc configuration can be specified with configmaps. 
-Do visit [DexIDP](https://github.com/dexidp/dex) for detail explanations.
+Please visit [DexIDP](https://github.com/dexidp/dex) for more detail.
 
 ```
 ## The followings entries are the variables  accepted by contour oidc module.
