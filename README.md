@@ -98,7 +98,7 @@ Oidc configuration can be specified with configmaps.
 Please visit [DexIDP](https://github.com/dexidp/dex) for more detail.
 
 ```
-## The followings entries are the variables  accepted by contour oidc module.
+## The following entries are the variables  accepted by the Contour OIDC module.
 ## server address and port 
 address: ":9443"
 
