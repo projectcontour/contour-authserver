@@ -38,7 +38,7 @@ spec:
         resources:
           limits:
             cpu: 100m
-            memory: 30Mi
+            memory: 90Mi
       volumes:
       - name: tls
         secret:
