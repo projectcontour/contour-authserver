@@ -7,7 +7,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// OIDCConfig ...
+// OIDCConfig
 type OIDCConfig struct {
 	Address string `yaml:"address"`
 

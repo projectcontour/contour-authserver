@@ -34,7 +34,10 @@ type OIDCConnect struct {
 // Implement interface.
 var _ Checker = &OIDCConnect{}
 
-//Check ...
+/*
+	Check Entry point for authentication. it accept incoming request and redirect un-authenticated user to
+	IDP. Otherwise it will route user to the intended url
+*/
 func (h *OIDCConnect) Check(ctx context.Context, req *Request) (*Response, error) {
 
 	h.Log.Info("checking request",
@@ -73,6 +76,7 @@ func (h *OIDCConnect) Check(ctx context.Context, req *Request) (*Response, error
 
 }
 
+//isValidState  check user token and state validity	for subsequent calls
 func (h *OIDCConnect) isValidState(ctx context.Context, req *Request, url *url.URL) (Response, bool, error) {
 
 	// 1. Check do we have stateid stored in querystring ?
@@ -115,6 +119,12 @@ func (h *OIDCConnect) isValidState(ctx context.Context, req *Request, url *url.U
 	return Response{}, false, nil
 }
 
+/**
+	loginHandler
+	Accept request and url,
+	Return Response
+	LoginHandler help to generate new state that is required by oauth during initial user login.
+**/
 func (h *OIDCConnect) loginHandler(req *Request, u *url.URL) Response {
 
 	state := store.NewState()
@@ -133,6 +143,13 @@ func (h *OIDCConnect) loginHandler(req *Request, u *url.URL) Response {
 	return resp
 }
 
+/**
+	callbackHandler
+	Accept request and url,
+	Return Response
+	callback handler check state, code and token validity. Ensure everything is in order before redirect user to their intended destination.
+	TODO :: currently missing query parameters propagation features.
+**/
 func (h *OIDCConnect) callbackHandler(ctx context.Context, req *Request, u *url.URL) (Response, error) {
 
 	// resp := createDefaultResponse()
@@ -145,7 +162,7 @@ func (h *OIDCConnect) callbackHandler(ctx context.Context, req *Request, u *url.
 	if code == "" || oauthState == "" {
 
 		// 2.1 Code and State is empty, return Bad Request
-		err := fmt.Errorf("Code ans State is not available")
+		err := fmt.Errorf("Code and State is not available")
 		return createResponse(http.StatusBadRequest), err
 	}
 
@@ -194,6 +211,7 @@ func (h *OIDCConnect) callbackHandler(ctx context.Context, req *Request, u *url.
 	return resp, nil
 }
 
+//isValidStateToken verify token and signature
 func (h *OIDCConnect) isValidStateToken(ctx context.Context, state *store.OIDCState, provider *oidc.Provider) bool {
 
 	if state == nil {
@@ -223,6 +241,7 @@ func (h *OIDCConnect) isValidStateToken(ctx context.Context, state *store.OIDCSt
 	return true
 }
 
+//getStateFromCookie retrive state token from cookie header and return the value as OIDCState
 func (h *OIDCConnect) getStateFromCookie(ctx context.Context, req *Request) (*store.OIDCState, error) {
 
 	cookieVal := req.Request.Header.Get("cookie")
@@ -247,6 +266,7 @@ func (h *OIDCConnect) getStateFromCookie(ctx context.Context, req *Request) (*st
 	return nil, fmt.Errorf("no %q cookie", oauthTokenName)
 }
 
+//initProvider intialize oidc provide with ths given issuer URL. return oidc.Provider
 func (h *OIDCConnect) initProvider(ctx context.Context) (*oidc.Provider, error) {
 	provider, err := oidc.NewProvider(ctx, h.OidcConfig.IssuerURL)
 	if err != nil {
@@ -256,6 +276,7 @@ func (h *OIDCConnect) initProvider(ctx context.Context) (*oidc.Provider, error) 
 	return provider, nil
 }
 
+//oauth2Config factory method to oauth2Config
 func (h *OIDCConnect) oauth2Config() *oauth2.Config {
 	return &oauth2.Config{
 		ClientID:     h.OidcConfig.ClientID,
@@ -266,10 +287,12 @@ func (h *OIDCConnect) oauth2Config() *oauth2.Config {
 	}
 }
 
+//createResponseDefault helper class for default response
 func createResponseDefault() Response {
 	return createResponse(http.StatusUnauthorized)
 }
 
+//createResponse helper class to create response. Accept status code and return Response
 func createResponse(status int) Response {
 
 	allow := (status == http.StatusOK)
@@ -301,7 +324,7 @@ func parseURL(req *Request) *url.URL {
 	return u
 }
 
-// TODO :: safe to ignore
+//  formatRequest safe to ignore only use during debugging
 func formatRequest(r *Request) string {
 
 	// Create return string

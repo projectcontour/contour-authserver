@@ -24,7 +24,7 @@ const (
 	StatusTokenReady
 )
 
-// NewState .... create new state to store token for OIDC
+// NewState  create new state to store token for OIDC
 func NewState() *OIDCState {
 
 	state := &OIDCState{
@@ -34,13 +34,13 @@ func NewState() *OIDCState {
 	return state
 }
 
-// ConvertToByte ... Convert State to Byte
+// ConvertToByte  Convert State to Byte
 func ConvertToByte(s *OIDCState) []byte {
 	b, _ := json.Marshal(s)
 	return b
 }
 
-// ConvertToType ... Convert Byte to State
+// ConvertToType Convert Byte to State
 func ConvertToType(value []byte) *OIDCState {
 	state := &OIDCState{}
 	json.Unmarshal(value, &state)
@@ -48,17 +48,17 @@ func ConvertToType(value []byte) *OIDCState {
 	return state
 }
 
-// IsNewToken ...
+// IsNewToken check if current state is new and token from idp is needed.
 func (s *OIDCState) IsNewToken() bool {
 	return (s.Status == StatusNeedToken)
 }
 
-// IsTokenReady ...
+// IsTokenReady check if token is ready
 func (s *OIDCState) IsTokenReady() bool {
 	return (s.Status == StatusTokenReady)
 }
 
-// GenerateOauthState ... Generate new Oauth State
+// GenerateOauthState  Generate new Oauth State from random bytes. The state define a unique request from a particular user and used to identity user during callback or subsequent calls.
 func (s *OIDCState) GenerateOauthState() string {
 
 	b := make([]byte, 32)

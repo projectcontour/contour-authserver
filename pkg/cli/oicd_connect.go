@@ -30,10 +30,6 @@ func NewOIDCConnect() *cobra.Command {
 				return ExitError{EX_CONFIG, err}
 			}
 
-			if cfg == nil {
-				log.Info("config is empty ")
-			}
-
 			log.Info("init oidc... ")
 
 			bigCache, _ := bigcache.NewBigCache(bigcache.DefaultConfig(time.Duration(cfg.CacheTimeout) * time.Minute))
