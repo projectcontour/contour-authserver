@@ -148,7 +148,6 @@ func (h *OIDCConnect) loginHandler(req *Request, u *url.URL) Response {
 	Accept request and url,
 	Return Response
 	callback handler check state, code and token validity. Ensure everything is in order before redirect user to their intended destination.
-	TODO :: currently missing query parameters propagation features.
 **/
 func (h *OIDCConnect) callbackHandler(ctx context.Context, req *Request, u *url.URL) (Response, error) {
 
@@ -205,7 +204,7 @@ func (h *OIDCConnect) callbackHandler(ctx context.Context, req *Request, u *url.
 	resp := createResponse(http.StatusTemporaryRedirect)
 	resp.Response.Header.Add(stateQueryParamName, state.OAuthState)
 
-	// TODO .. may need to rebuild this, in case user could have other query parameters
+	// TODO(robinfoe) #18 : OIDC support should propagate any claims back to the request
 	resp.Response.Header.Add("Location", fmt.Sprintf("%s://%s?%s=%s", state.Scheme, state.RequestPath, stateQueryParamName, state.OAuthState))
 
 	return resp, nil
@@ -230,7 +229,7 @@ func (h *OIDCConnect) isValidStateToken(ctx context.Context, state *store.OIDCSt
 		return false
 	}
 
-	// TODO :: enhancement on claim propagations
+	// TODO(robinfoe) #18 : OIDC support should propagate any claims back to the request
 	// Try to claim.
 	var claims json.RawMessage
 	if err := idToken.Claims(&claims); err != nil {

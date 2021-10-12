@@ -22,4 +22,4 @@ data:
     cacheTimeout: 40
     skipIssuerCheck: true
 
-## TODO :: move clientID and Clientsecret to kubernetes secret
+## ENHANCEMENT :: move clientID and Clientsecret to kubernetes secret

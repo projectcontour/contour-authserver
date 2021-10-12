@@ -26,7 +26,7 @@ type OIDCConfig struct {
 	CacheTimeout           int32    `yaml:"cacheTimeout"`
 	SkipIssuerCheck        bool     `yaml:"skipIssuerCheck"`
 
-	// TODO :: decide wether should this be use
+	// T decide wether should this be use
 	SessionSecurityKey string `yaml:"sessionSecurityKey" envconfig:"SESSION_SECURITY_KEY"`
 }
 
