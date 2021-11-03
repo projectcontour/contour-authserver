@@ -76,6 +76,52 @@ If this flag is empty, Secrets from all namespaces will be used.
 The `--selector` flag accepts a [label selector][5] that can be
 used to further restrict which Secrets the `htpasswd` backend will consume.
 
+# oidc
+
+Usage:
+
+```
+Run a oidc authentication server
+
+Usage:
+  contour-authserver oidc [OPTIONS]
+
+Flags:
+      --config string              Path to config file ( yaml format )
+  -h, --help                       help for htpasswd
+      --tls-ca-path string         Path to the TLS CA certificate bundle.
+      --tls-cert-path string       Path to the TLS server certificate.
+      --tls-key-path string        Path to the TLS server key.
+
+```
+Oidc configuration can be specified with configmaps. 
+Please visit [DexIDP](https://github.com/dexidp/dex) for more detail.
+
+```
+## The following entries are the variables  accepted by the Contour OIDC module.
+## server address and port 
+address: ":9443"
+
+## OIDC issuer URL 
+issuerURL: "http://<path to your SSO server>"
+
+## App redirect path ( usually point back to app url)
+redirectURL: "https://<path to your applications>"
+redirectPath: "/callback"
+allowEmptyClientSecret: false
+scopes:
+- openid
+- profile
+- email
+- offline_access
+usernameClaim: "nickname"
+emailClaim: ""
+serveTLS: false
+clientID: "<your client id>"
+clientSecret: "<your client secret>"
+```
+
+
 # Request Headers
 
 Both authorization backends emit the `Auth-Handler` header, which
@@ -92,8 +138,8 @@ does.)
 # Deploying `contour-authserver`
 
 The recommended way to deploy `contour-authserver` is to use the Kustomize
-[deployment YAML](./config/default). This will deploy services for both
-the `testserver` and `htpasswd` backends. For developer deployments,
+[deployment YAML](./config/default). This will deploy services for 
+`testserver` , `htpasswd` and `oidc` backends. For developer deployments,
 [Skaffold](https://skaffold.dev/) seems to work reasonably well.
 
 There are no versioned releases or container images yet.

@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oidc
+  labels:
+    app.kubernetes.io/name: oidc
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oidc
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oidc
+    spec:
+      serviceAccountName: oidc
+      containers:
+      - name: oidc
+        image: oidc
+        imagePullPolicy: IfNotPresent
+        command:
+        - /contour-authserver
+        args:
+        - oidc
+        - --config=/config/auth-svr-config.yaml
+        - --tls-ca-path=/tls/ca.crt
+        - --tls-cert-path=/tls/tls.crt
+        - --tls-key-path=/tls/tls.key
+        ports:
+        - name: auth
+          containerPort: 9443
+          protocol: TCP
+        volumeMounts:
+        - name: tls
+          mountPath: /tls
+          readOnly: true
+        - name: oidc-config
+          mountPath: /config
+        resources:
+          limits:
+            cpu: 100m
+            memory: 30Mi
+      volumes:
+      - name: tls
+        secret:
+          secretName: oidc
+      - name: oidc-config
+        configMap:
+          name: oidc-config
+      
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oidc
+  labels:
+    app.kubernetes.io/name: oidc
+spec:
+  ports:
+  - name: auth
+    protocol: TCP
+    port: 9443
+    targetPort: 9443
+  selector:
+    app.kubernetes.io/name: oidc
+  type: ClusterIP

@@ -1,0 +1,25 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: oidc-config
+data:
+  auth-svr-config.yaml: |
+    address: ":9443"
+    issuerURL: "http://dex.auth.app.192.168.10.134.nip.io:9080"
+    redirectURL: "https://echo.oidc.app.local:9443"
+    redirectPath: "/callback"
+    allowEmptyClientSecret: false
+    scopes:
+    - openid
+    - profile
+    - email
+    - offline_access
+    usernameClaim: "nickname"
+    emailClaim: ""
+    serveTLS: false
+    clientID: "bender" 
+    clientSecret: "googledocs"
+    cacheTimeout: 40
+    skipIssuerCheck: true
+
+## ENHANCEMENT :: move clientID and Clientsecret to kubernetes secret
