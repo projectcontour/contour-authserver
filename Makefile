@@ -67,7 +67,7 @@ lint:
 			--volume $$(pwd):/app \
 			--workdir /app \
 			--env GO111MODULE \
-			golangci/golangci-lint:v1.28.1 \
+			golangci/golangci-lint:v1.39.0 \
 			golangci-lint run -v --exclude-use-default=false ; \
 	fi
 
