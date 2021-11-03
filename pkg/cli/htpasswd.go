@@ -82,14 +82,14 @@ func NewHtpasswdCommand() *cobra.Command {
 			auth.RegisterServer(srv, htpasswd)
 
 			errChan := make(chan error)
-			stopChan := ctrl.SetupSignalHandler()
+			ctx := ctrl.SetupSignalHandler()
 
 			go func() {
 				log.Info("started authorization server",
 					"address", mustString(cmd.Flags().GetString("address")),
 					"realm", htpasswd.Realm)
 
-				if err := auth.RunServer(listener, srv, stopChan); err != nil {
+				if err := auth.RunServer(listener, srv, ctx); err != nil {
 					errChan <- ExitErrorf(EX_FAIL, "authorization server failed: %w", err)
 				}
 
@@ -99,7 +99,7 @@ func NewHtpasswdCommand() *cobra.Command {
 			go func() {
 				log.Info("started controller")
 
-				if err := mgr.Start(stopChan); err != nil {
+				if err := mgr.Start(ctx); err != nil {
 					errChan <- ExitErrorf(EX_FAIL, "controller manager failed: %w", err)
 				}
 
@@ -109,7 +109,7 @@ func NewHtpasswdCommand() *cobra.Command {
 			select {
 			case err := <-errChan:
 				return err
-			case <-stopChan:
+			case <-ctx.Done():
 				return nil
 			}
 		},

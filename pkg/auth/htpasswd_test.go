@@ -30,7 +30,7 @@ import (
 )
 
 func TestHtpasswdAuth(t *testing.T) {
-	client := fake.NewFakeClient(
+	client := fake.NewClientBuilder().WithRuntimeObjects(
 		&v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "notmatched",
@@ -104,11 +104,11 @@ func TestHtpasswdAuth(t *testing.T) {
 	auth := Htpasswd{
 		Log:      log.NullLogger{},
 		Realm:    "default",
-		Client:   client,
+		Client:   client.Build(),
 		Selector: selector,
 	}
 
-	_, err = auth.Reconcile(ctrl.Request{})
+	_, err = auth.Reconcile(context.Background(), ctrl.Request{})
 	assert.NoError(t, err, "reconciliation should not have failed")
 	assert.NotNil(t, auth.Passwords, "reconciliation should have set a htpasswd file")
 	assert.True(t, auth.Match("example1", "example1"), "auth for example1:example1 should have succeeded")

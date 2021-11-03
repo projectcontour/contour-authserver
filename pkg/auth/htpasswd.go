@@ -31,7 +31,7 @@ import (
 const (
 	// AnnotationAuthType labels Secrets that can be used for basic Auth.
 	AnnotationAuthType = "projectcontour.io/auth-type"
-	// AnnotationAuthRealm labels Secrets that match our authentication realm
+	// AnnotationAuthRealm labels Secrets that match our authentication realm.
 	AnnotationAuthRealm = "projectcontour.io/auth-realm"
 )
 
@@ -127,7 +127,7 @@ func (h *Htpasswd) Check(ctx context.Context, request *Request) (*Response, erro
 }
 
 // Reconcile ...
-func (h *Htpasswd) Reconcile(ctrl.Request) (ctrl.Result, error) {
+func (h *Htpasswd) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var opts []client.ListOption
 
 	if h.Selector != nil {
@@ -136,7 +136,7 @@ func (h *Htpasswd) Reconcile(ctrl.Request) (ctrl.Result, error) {
 
 	// First, find all the auth secrets for this realm.
 	secrets := &v1.SecretList{}
-	if err := h.Client.List(context.Background(), secrets, opts...); err != nil {
+	if err := h.Client.List(ctx, secrets, opts...); err != nil {
 		return ctrl.Result{}, err
 	}
 

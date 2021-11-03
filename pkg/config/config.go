@@ -1,13 +1,27 @@
+// Copyright Project Contour Authors
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package config
 
 import (
 	"fmt"
 	"io/ioutil"
+	"path/filepath"
 
 	"gopkg.in/yaml.v2"
 )
 
-// OIDCConfig
+// OIDCConfig defines the configuration parameters uses to configure the OIDC provider.
 type OIDCConfig struct {
 	Address string `yaml:"address"`
 
@@ -30,20 +44,20 @@ type OIDCConfig struct {
 	SessionSecurityKey string `yaml:"sessionSecurityKey" envconfig:"SESSION_SECURITY_KEY"`
 }
 
-// NewConfig returns a Config struct from serialized config file
+// NewConfig returns a Config struct from serialized config file.
 func NewConfig(configFile string) (*OIDCConfig, error) {
-
 	cfg := &OIDCConfig{
 		CacheTimeout:    40,
 		SkipIssuerCheck: false,
 	}
 
 	if configFile != "" {
-		data, err := ioutil.ReadFile(configFile)
+		data, err := ioutil.ReadFile(filepath.Clean(configFile))
 		if err != nil {
 			return nil, err
 		}
-		err = yaml.Unmarshal([]byte(data), cfg)
+
+		err = yaml.Unmarshal(data, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -63,7 +77,7 @@ func NewConfig(configFile string) (*OIDCConfig, error) {
 	return cfg, nil
 }
 
-// Validate verifies all properties of config struct are intialized
+// Validate verifies all properties of config struct are initialized.
 func (cfg *OIDCConfig) Validate() error {
 	checks := []struct {
 		bad    bool
@@ -81,5 +95,6 @@ func (cfg *OIDCConfig) Validate() error {
 			return fmt.Errorf("invalid config: %s", check.errMsg)
 		}
 	}
+
 	return nil
 }

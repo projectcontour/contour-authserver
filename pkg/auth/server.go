@@ -82,7 +82,7 @@ func RegisterServer(srv *grpc.Server, c Checker) {
 }
 
 // RunServer runs the server until signaled by stopChan.
-func RunServer(listener net.Listener, srv *grpc.Server, stopChan <-chan struct{}) error {
+func RunServer(listener net.Listener, srv *grpc.Server, ctx context.Context) error {
 	errChan := make(chan error)
 
 	go func() {
@@ -92,7 +92,7 @@ func RunServer(listener net.Listener, srv *grpc.Server, stopChan <-chan struct{}
 	select {
 	case err := <-errChan:
 		return err
-	case <-stopChan:
+	case <-ctx.Done():
 		srv.Stop()
 		return nil
 	}
@@ -117,6 +117,7 @@ func NewServerCredentials(certPath string, keyPath string, caPath string) (crede
 	}
 
 	return credentials.NewTLS(&tls.Config{
+		MinVersion:   tls.VersionTLS13,
 		Certificates: []tls.Certificate{srv},
 		RootCAs:      p,
 	}), nil
