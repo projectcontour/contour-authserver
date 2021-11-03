@@ -89,7 +89,7 @@ func NewHtpasswdCommand() *cobra.Command {
 					"address", mustString(cmd.Flags().GetString("address")),
 					"realm", htpasswd.Realm)
 
-				if err := auth.RunServer(listener, srv, ctx); err != nil {
+				if err := auth.RunServer(ctx, listener, srv); err != nil {
 					errChan <- ExitErrorf(EX_FAIL, "authorization server failed: %w", err)
 				}
 

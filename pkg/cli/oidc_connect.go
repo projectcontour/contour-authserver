@@ -70,7 +70,7 @@ func NewOIDCConnect() *cobra.Command {
 			auth.RegisterServer(srv, authOidc)
 
 			log.Info("started serving", "address", authOidc.OidcConfig.Address)
-			return auth.RunServer(listener, srv, ctrl.SetupSignalHandler())
+			return auth.RunServer(ctrl.SetupSignalHandler(), listener, srv)
 		},
 	}
 

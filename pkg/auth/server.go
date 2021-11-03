@@ -82,7 +82,7 @@ func RegisterServer(srv *grpc.Server, c Checker) {
 }
 
 // RunServer runs the server until signaled by stopChan.
-func RunServer(listener net.Listener, srv *grpc.Server, ctx context.Context) error {
+func RunServer(ctx context.Context, listener net.Listener, srv *grpc.Server) error {
 	errChan := make(chan error)
 
 	go func() {
