@@ -44,7 +44,7 @@ func NewTestserverCommand() *cobra.Command {
 			auth.RegisterServer(srv, &auth.Testserver{Log: log})
 
 			log.Info("started serving", "address", mustString(cmd.Flags().GetString("address")))
-			return auth.RunServer(listener, srv, ctrl.SetupSignalHandler())
+			return auth.RunServer(ctrl.SetupSignalHandler(), listener, srv)
 		},
 	}
 
