@@ -313,34 +313,3 @@ func parseURL(req *Request) *url.URL {
 
 	return u
 }
-
-//// formatRequest safe to ignore only use during debugging
-//func (o *OIDCConnect) formatRequest(r *Request) string {
-//
-//	// Create return string
-//	var request []string
-//	// Add the request string
-//
-//	u := fmt.Sprintf("%v %v %v %v", r.Request.Method, r.Request.URL, r.Request.RequestURI, r.Request.Proto)
-//	request = append(request, u)
-//	// Add the host
-//	request = append(request, fmt.Sprintf("Host: %v", r.Request.Host))
-//	// Loop through headers
-//	for name, headers := range r.Request.Header {
-//		//name = strings.ToLower(name)
-//		for _, h := range headers {
-//			request = append(request, fmt.Sprintf("%v: %v", name, h))
-//		}
-//	}
-//
-//	// If this is a POST, add post data
-//	if r.Request.Method == "POST" {
-//		if err := r.Request.ParseForm(); err != nil {
-//			o.Log.Error(err, "error parsing request form")
-//		}
-//
-//		request = append(request, "\n", r.Request.Form.Encode())
-//	}
-//	// Return the request as a string
-//	return strings.Join(request, "\n")
-//}
