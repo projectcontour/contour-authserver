@@ -117,7 +117,7 @@ func NewServerCredentials(certPath string, keyPath string, caPath string) (crede
 	}
 
 	return credentials.NewTLS(&tls.Config{
-		MinVersion:   tls.VersionTLS13,
+		MinVersion:   tls.VersionTLS12,
 		Certificates: []tls.Certificate{srv},
 		RootCAs:      p,
 	}), nil
