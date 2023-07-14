@@ -27,7 +27,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-//NewOIDCConnect - start server as OIDC and take in 'config' file as parameter...
+// NewOIDCConnect - start server as OIDC and take in 'config' file as parameter...
 func NewOIDCConnect() *cobra.Command {
 	cmd := cobra.Command{
 		Use:   "oidc Server [OPTIONS]",

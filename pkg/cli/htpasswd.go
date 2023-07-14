@@ -36,7 +36,7 @@ func NewHtpasswdCommand() *cobra.Command {
 			log := ctrl.Log.WithName("auth.htpasswd")
 			s := runtime.NewScheme()
 
-			scheme.AddToScheme(s) //nolint(errcheck)
+			scheme.AddToScheme(s) //nolint:gosec,errcheck
 
 			var cacheFunc cache.NewCacheFunc
 

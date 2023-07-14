@@ -2,7 +2,7 @@
 #
 # Note that this is not used for releasing, since goreleaser handles that.
 
-FROM golang:1.14 as base
+FROM golang:1.20 as base
 
 ENV GO111MODULE=on
 
