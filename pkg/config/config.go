@@ -15,7 +15,7 @@ package config
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 
 	"gopkg.in/yaml.v2"
@@ -52,7 +52,7 @@ func NewConfig(configFile string) (*OIDCConfig, error) {
 	}
 
 	if configFile != "" {
-		data, err := ioutil.ReadFile(filepath.Clean(configFile))
+		data, err := os.ReadFile(filepath.Clean(configFile))
 		if err != nil {
 			return nil, err
 		}

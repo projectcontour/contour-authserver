@@ -58,18 +58,7 @@ vet: ## Run go vet against code
 
 .PHONY: lint
 lint: ## Run linters
-lint:
-	@if command -v golangci-lint > /dev/null 2>&1 ; then \
-		golangci-lint run -v --exclude-use-default=false ; \
-	else \
-		docker run \
-			--rm \
-			--volume $$(pwd):/app \
-			--workdir /app \
-			--env GO111MODULE \
-			golangci/golangci-lint:v1.39.0 \
-			golangci-lint run -v --exclude-use-default=false ; \
-	fi
+	go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.51.2 run -v --exclude-use-default=false
 
 .PHONY: docker-build
 docker-build: ## Build the docker image

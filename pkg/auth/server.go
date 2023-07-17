@@ -17,8 +17,8 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"io/ioutil"
 	"net"
+	"os"
 
 	envoy_service_auth_v2 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v2"
 	envoy_service_auth_v3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
@@ -26,10 +26,10 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
-type CheckRequestV2 = envoy_service_auth_v2.CheckRequest   //nolint(golint)
-type CheckResponseV2 = envoy_service_auth_v2.CheckResponse //nolint(golint)
-type CheckRequestV3 = envoy_service_auth_v3.CheckRequest   //nolint(golint)
-type CheckResponseV3 = envoy_service_auth_v3.CheckResponse //nolint(golint)
+type CheckRequestV2 = envoy_service_auth_v2.CheckRequest   //nolint:golint
+type CheckResponseV2 = envoy_service_auth_v2.CheckResponse //nolint:golint
+type CheckRequestV3 = envoy_service_auth_v3.CheckRequest   //nolint:golint
+type CheckResponseV3 = envoy_service_auth_v3.CheckResponse //nolint:golint
 
 // Checker is an implementation of the Envoy External Auth API.
 //
@@ -108,7 +108,7 @@ func NewServerCredentials(certPath string, keyPath string, caPath string) (crede
 	p := x509.NewCertPool()
 
 	if caPath != "" {
-		ca, err := ioutil.ReadFile(caPath) //nolint(gosec)
+		ca, err := os.ReadFile(caPath) //nolint:gosec
 		if err != nil {
 			return nil, err
 		}

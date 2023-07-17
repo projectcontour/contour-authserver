@@ -237,7 +237,7 @@ func (o *OIDCConnect) isValidStateToken(ctx context.Context, state *store.OIDCSt
 	return true
 }
 
-//getStateFromCookie retrieve state token from cookie header and return the value as OIDCState.
+// getStateFromCookie retrieve state token from cookie header and return the value as OIDCState.
 func (o *OIDCConnect) getStateFromCookie(req *Request) (*store.OIDCState, error) {
 	var state *store.OIDCState
 
@@ -262,7 +262,7 @@ func (o *OIDCConnect) getStateFromCookie(req *Request) (*store.OIDCState, error)
 	return nil, fmt.Errorf("no %q cookie", oauthTokenName)
 }
 
-//initProvider initialize oidc provide with ths given issuer URL. return oidc.Provider.
+// initProvider initialize oidc provide with ths given issuer URL. return oidc.Provider.
 func (o *OIDCConnect) initProvider(ctx context.Context) (*oidc.Provider, error) {
 	provider, err := oidc.NewProvider(ctx, o.OidcConfig.IssuerURL)
 	if err != nil {

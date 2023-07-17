@@ -127,7 +127,7 @@ func TestHtpasswdAuth(t *testing.T) {
 	require.NoError(t, err, "check should not have failed")
 	assert.Equal(t, http.StatusUnauthorized, response.Response.StatusCode)
 	// Note that this isn't canonical as per CanonicalMIMEHeaderKey :-(
-	assert.NotEmpty(t, response.Response.Header["WWW-Authenticate"]) //nolint(staticcheck)
+	assert.NotEmpty(t, response.Response.Header["WWW-Authenticate"]) //nolint:staticcheck
 
 	// Check an authorized response.
 	response, err = auth.Check(context.TODO(), &Request{
