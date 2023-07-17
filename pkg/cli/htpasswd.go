@@ -23,7 +23,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 )
 
 // NewHtpasswdCommand ...
@@ -38,17 +37,16 @@ func NewHtpasswdCommand() *cobra.Command {
 
 			scheme.AddToScheme(s) //nolint:gosec,errcheck
 
-			var cacheFunc cache.NewCacheFunc
-
-			if ns, err := cmd.Flags().GetStringSlice("watch-namespaces"); err == nil && len(ns) > 0 {
-				cacheFunc = cache.MultiNamespacedCacheBuilder(ns)
+			options := ctrl.Options{
+				Scheme:             s,
+				MetricsBindAddress: mustString(cmd.Flags().GetString("metrics-address")),
 			}
 
-			mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-				Scheme:             s,
-				NewCache:           cacheFunc,
-				MetricsBindAddress: mustString(cmd.Flags().GetString("metrics-address")),
-			})
+			if ns, err := cmd.Flags().GetStringSlice("watch-namespaces"); err == nil && len(ns) > 0 {
+				options.Cache.Namespaces = ns
+			}
+
+			mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), options)
 			if err != nil {
 				return ExitErrorf(EX_CONFIG, "failed to create controller manager: %s", err)
 			}
