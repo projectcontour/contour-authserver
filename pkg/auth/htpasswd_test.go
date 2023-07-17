@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
@@ -102,7 +103,7 @@ func TestHtpasswdAuth(t *testing.T) {
 	}
 
 	auth := Htpasswd{
-		Log:      log.NullLogger{},
+		Log:      logr.New(log.NullLogSink{}),
 		Realm:    "default",
 		Client:   client.Build(),
 		Selector: selector,
