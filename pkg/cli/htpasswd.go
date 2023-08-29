@@ -23,6 +23,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	ctrl_cache "sigs.k8s.io/controller-runtime/pkg/cache"
+	ctrl_metrics_server "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
 // NewHtpasswdCommand ...
@@ -38,12 +40,19 @@ func NewHtpasswdCommand() *cobra.Command {
 			scheme.AddToScheme(s) //nolint:gosec,errcheck
 
 			options := ctrl.Options{
-				Scheme:             s,
-				MetricsBindAddress: mustString(cmd.Flags().GetString("metrics-address")),
+				Scheme: s,
+				Metrics: ctrl_metrics_server.Options{
+					BindAddress: mustString(cmd.Flags().GetString("metrics-address")),
+				},
 			}
 
-			if ns, err := cmd.Flags().GetStringSlice("watch-namespaces"); err == nil && len(ns) > 0 {
-				options.Cache.Namespaces = ns
+			if namespaces, err := cmd.Flags().GetStringSlice("watch-namespaces"); err == nil && len(namespaces) > 0 {
+				// Maps namespaces to cache configs. We will set an empty config
+				// so the higher level defaults are used.
+				options.Cache.DefaultNamespaces = make(map[string]ctrl_cache.Config)
+				for _, ns := range namespaces {
+					options.Cache.DefaultNamespaces[ns] = ctrl_cache.Config{}
+				}
 			}
 
 			mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), options)
