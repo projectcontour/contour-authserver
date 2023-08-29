@@ -162,12 +162,12 @@ $ git push origin $NEWVERS
 # Build and release binaries and Docker images.
 $ make release
 
-# Log in with the Contour build account to push the images.
-$ docker login -u projectcontourbuilder
-$ docker push projectcontour/contour-authserver:$NEWVERS
-$ docker push projectcontour/contour-authserver:latest
+# Log in with your GitHub account and token to push the images.
+$ docker login -u <GitHub username>
+$ docker push ghcr.io/projectcontour/contour-authserver:$NEWVERS
+$ docker push ghcr.io/projectcontour/contour-authserver:latest
 
-# Log out of the Contour build account.
+# Log out.
 $ docker logout
 ```
 

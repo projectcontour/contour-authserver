@@ -76,7 +76,7 @@ release: ## Build and publish a release to Github
 	git describe --exact-match >/dev/null
 	# Do a full dry-run.
 	goreleaser check
-	SHA=$(SHA) VERSION=$(VERSION) goreleaser release --rm-dist
+	SHA=$(SHA) VERSION=$(VERSION) goreleaser release --clean
 
 .PHONY: clean
 clean:
