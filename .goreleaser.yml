@@ -19,13 +19,6 @@ builds:
   - -X github.com/projectcontour/contour-authserver/pkg/version.Version={{ .Env.VERSION }}
   - -X github.com/projectcontour/contour-authserver/pkg/version.Sha={{ .Env.SHA }}
   - -X github.com/projectcontour/contour-authserver/pkg/version.BuildDate={{ .Date }}
-archives:
-- replacements:
-    darwin: Darwin
-    linux: Linux
-    windows: Windows
-    386: i386
-    amd64: x86_64
 checksum:
   name_template: 'checksums.txt'
 snapshot:
@@ -42,8 +35,8 @@ dockers:
   dockerfile: hack/Dockerfile.release
   skip_push: true
   image_templates:
-    - "projectcontour/{{ .ProjectName }}:{{ .Env.VERSION }}"
-    - "projectcontour/{{ .ProjectName }}:latest"
+    - "ghcr.io/projectcontour/{{ .ProjectName }}:{{ .Env.VERSION }}"
+    - "ghcr.io/projectcontour/{{ .ProjectName }}:latest"
   build_flag_templates:
   - "--pull"
   - "--label=org.opencontainers.image.created={{.Date}}"
