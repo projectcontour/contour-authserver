@@ -8,7 +8,7 @@ require (
 	github.com/envoyproxy/go-control-plane v0.11.1
 	github.com/go-logr/logr v1.3.0
 	github.com/mattn/go-isatty v0.0.20
-	github.com/spf13/cobra v1.7.0
+	github.com/spf13/cobra v1.8.0
 	github.com/stretchr/testify v1.8.4
 	github.com/tg123/go-htpasswd v1.2.1
 	golang.org/x/oauth2 v0.13.0
