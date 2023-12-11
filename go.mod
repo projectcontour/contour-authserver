@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/allegro/bigcache v1.2.1
-	github.com/coreos/go-oidc/v3 v3.8.0
+	github.com/coreos/go-oidc/v3 v3.9.0
 	github.com/envoyproxy/go-control-plane v0.11.1
 	github.com/go-logr/logr v1.3.0
 	github.com/mattn/go-isatty v0.0.20
