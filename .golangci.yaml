@@ -10,7 +10,6 @@ linters:
   - godot
   - gofmt
   - goimports
-  - golint
   - goprintffuncname
   - gosec
   - govet
@@ -36,4 +35,3 @@ linters-settings:
 issues:
   exclude:
     - Error return value of .((os\.)?std(out|err)\..*|.*Close|.*Flush|os\.Remove(All)?|.*printf?|os\.(Un)?Setenv). is not checked
-
