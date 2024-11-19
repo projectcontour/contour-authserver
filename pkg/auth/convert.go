@@ -123,7 +123,7 @@ func (r *Response) AsV2() *CheckResponseV2 {
 			DeniedResponse: &envoy_service_auth_v2.DeniedHttpResponse{
 				Headers: convertHeaders(r.Response.Header),
 				Status: &envoy_type.HttpStatus{
-					Code: envoy_type.StatusCode(r.Response.StatusCode),
+					Code: envoy_type.StatusCode(r.Response.StatusCode), //nolint:gosec // disable G115
 				},
 			},
 		},
@@ -163,7 +163,7 @@ func (r *Response) AsV3() *CheckResponseV3 {
 			DeniedResponse: &envoy_service_auth_v3.DeniedHttpResponse{
 				Headers: convertHeaders(r.Response.Header),
 				Status: &envoy_type_v3.HttpStatus{
-					Code: envoy_type_v3.StatusCode(r.Response.StatusCode),
+					Code: envoy_type_v3.StatusCode(r.Response.StatusCode), //nolint:gosec // disable G115
 				},
 			},
 		},
