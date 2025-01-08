@@ -1,7 +1,6 @@
 module github.com/projectcontour/contour-authserver
 
 go 1.23
-
 toolchain go1.23.2
 
 require (
@@ -18,7 +17,7 @@ require (
 	google.golang.org/grpc v1.69.2
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.31.3
-	k8s.io/apimachinery v0.31.3
+	k8s.io/apimachinery v0.32.0
 	k8s.io/client-go v0.31.3
 	sigs.k8s.io/controller-runtime v0.19.3
 )
