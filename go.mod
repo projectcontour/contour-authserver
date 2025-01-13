@@ -14,7 +14,7 @@ require (
 	github.com/tg123/go-htpasswd v1.2.3
 	golang.org/x/oauth2 v0.25.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241118233622-e639e219e697
-	google.golang.org/grpc v1.69.2
+	google.golang.org/grpc v1.69.4
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.32.0
 	k8s.io/apimachinery v0.32.0
