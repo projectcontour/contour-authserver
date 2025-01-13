@@ -6,7 +6,7 @@ toolchain go1.23.2
 require (
 	github.com/allegro/bigcache v1.2.1
 	github.com/coreos/go-oidc/v3 v3.12.0
-	github.com/envoyproxy/go-control-plane/envoy v1.32.2
+	github.com/envoyproxy/go-control-plane/envoy v1.32.3
 	github.com/go-logr/logr v1.4.2
 	github.com/mattn/go-isatty v0.0.20
 	github.com/spf13/cobra v1.8.1
