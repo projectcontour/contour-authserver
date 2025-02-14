@@ -88,18 +88,29 @@ func (o *OIDCConnect) isValidState(ctx context.Context, req *Request, url *url.U
 	// Do we have stateid stored in querystring
 	var state *store.OIDCState
 
-	stateToken := url.Query().Get(stateQueryParamName)
+	// Check if there's a bearer token in the Authorization header
+	authHeader := req.Request.Header.Get("Authorization")
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		// Extract the token
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		// Create new state with the token
+		state = store.NewState()
+		state.Status = store.StatusTokenReady
+		state.IDToken = token
+	} else {
+		stateToken := url.Query().Get(stateQueryParamName)
 
-	stateByte, err := o.Cache.Get(stateToken)
-	if err == nil {
-		state = store.ConvertToType(stateByte)
+		stateByte, err := o.Cache.Get(stateToken)
+		if err == nil {
+			state = store.ConvertToType(stateByte)
+		}
+		// State not found, try to retrieve from cookies.
+		if state == nil {
+			state, _ = o.getStateFromCookie(req)
+		}
 	}
 
-	// State not found, try to retrieve from cookies.
-	if state == nil {
-		state, _ = o.getStateFromCookie(req)
-	}
-
+	// State exists, proceed with token validation.
 	// State exists, proceed with token validation.
 	if state != nil {
 		// Re-initialize provider to refresh the context, this seems like bugs with coreos go-oidc module.
@@ -116,7 +127,7 @@ func (o *OIDCConnect) isValidState(ctx context.Context, req *Request, url *url.U
 
 			resp.Response.Header.Add(oauthTokenName, string(stateJSON))
 
-			if err := o.Cache.Delete(state.OAuthState); err != nil {
+			if err := o.Cache.Delete(state.OAuthState); err != nil && err != bigcache.ErrEntryNotFound {
 				o.Log.Error(err, "error deleting state")
 			}
 
@@ -134,6 +145,13 @@ func (o *OIDCConnect) loginHandler(u *url.URL) Response {
 	state.GenerateOauthState()
 	state.RequestPath = path.Join(u.Host, u.Path)
 	state.Scheme = u.Scheme
+
+	config := o.oauth2Config()
+
+	redirectURL := fmt.Sprintf("%s://%s%s", u.Scheme, u.Host, u.Path)
+	if redirectURL != config.RedirectURL && matchDomain(redirectURL, o.OidcConfig.AuthorizedRedirectDomains) {
+		config.RedirectURL = redirectURL
+	}
 
 	authCodeURL := o.oauth2Config().AuthCodeURL(state.OAuthState)
 
@@ -205,6 +223,14 @@ func (o *OIDCConnect) callbackHandler(ctx context.Context, u *url.URL) (Response
 	resp.Response.Header.Add("Location",
 		fmt.Sprintf("%s://%s?%s=%s", state.Scheme, state.RequestPath, stateQueryParamName, state.OAuthState))
 
+	stateJSON, _ := json.Marshal(state)
+	resp.Response.Header.Add("Set-Cookie",
+		fmt.Sprintf("%s=%s; Path=/; Secure; SameSite=Lax", oauthTokenName, string(stateJSON)))
+
+	// TODO(robinfoe) #18 : OIDC support should propagate any claims back to the request
+	resp.Response.Header.Add("Set-Cookie",
+		fmt.Sprintf("%s=%s; Path=/; Secure; SameSite=Lax", oauthTokenName, string(stateJSON)))
+
 	return resp, nil
 }
 
@@ -246,7 +272,6 @@ func (o *OIDCConnect) getStateFromCookie(req *Request) (*store.OIDCState, error)
 	// Check through and get the right cookies
 	if len(cookieVal) > 0 {
 		cookies := strings.Split(cookieVal, ";")
-
 		for _, c := range cookies {
 			c = strings.TrimSpace(c)
 			if strings.HasPrefix(c, oauthTokenName) {
@@ -280,7 +305,8 @@ func (o *OIDCConnect) oauth2Config() *oauth2.Config {
 		ClientSecret: o.OidcConfig.ClientSecret,
 		Endpoint:     o.provider.Endpoint(),
 		Scopes:       o.OidcConfig.Scopes,
-		RedirectURL:  o.OidcConfig.RedirectURL + o.OidcConfig.RedirectPath,
+
+		RedirectURL: o.OidcConfig.RedirectURL + o.OidcConfig.RedirectPath,
 	}
 }
 
@@ -312,4 +338,66 @@ func parseURL(req *Request) *url.URL {
 	}
 
 	return u
+}
+
+// matchDomain checks if a domain matches any of the allowed patterns.
+func matchDomain(domain string, allowedPatterns []string) bool {
+	for _, pattern := range allowedPatterns {
+		if matchPattern(domain, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// matchPattern checks if a domain matches a single pattern with wildcards.
+func matchPattern(domain, pattern string) bool {
+	// Split the pattern and domain into parts.
+	patternParts := strings.Split(pattern, ".")
+	domainParts := strings.Split(domain, ".")
+
+	// If the number of parts doesn't match, it's not a match.
+	if len(patternParts) != len(domainParts) {
+		return false
+	}
+
+	// Check each part of the pattern against the domain.
+	for i := range patternParts {
+		if !matchPart(domainParts[i], patternParts[i]) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// matchPart checks if a single part of the domain matches the pattern part.
+func matchPart(domainPart, patternPart string) bool {
+	// If the pattern part is a wildcard, it matches anything.
+	if patternPart == "*" {
+		return true
+	}
+
+	// Split the pattern part by the wildcard.
+	parts := strings.Split(patternPart, "*")
+
+	// Check if the domain part matches the pattern parts in sequence.
+	pos := 0
+
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+
+		index := strings.Index(domainPart[pos:], part)
+
+		if index == -1 {
+			return false
+		}
+
+		pos += index + len(part)
+	}
+
+	return true
 }
