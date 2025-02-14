@@ -224,7 +224,12 @@ func (o *OIDCConnect) callbackHandler(ctx context.Context, u *url.URL) (Response
 		fmt.Sprintf("%s://%s?%s=%s", state.Scheme, state.RequestPath, stateQueryParamName, state.OAuthState))
 
 	stateJSON, _ := json.Marshal(state)
-	resp.Response.Header.Add("Set-Cookie", fmt.Sprintf("%s=%s; Path=/; Secure; SameSite=Lax", oauthTokenName, string(stateJSON)))
+	resp.Response.Header.Add("Set-Cookie",
+		fmt.Sprintf("%s=%s; Path=/; Secure; SameSite=Lax", oauthTokenName, string(stateJSON)))
+
+	// TODO(robinfoe) #18 : OIDC support should propagate any claims back to the request
+	resp.Response.Header.Add("Set-Cookie",
+		fmt.Sprintf("%s=%s; Path=/; Secure; SameSite=Lax", oauthTokenName, string(stateJSON)))
 
 	return resp, nil
 }
@@ -342,6 +347,7 @@ func matchDomain(domain string, allowedPatterns []string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -378,14 +384,18 @@ func matchPart(domainPart, patternPart string) bool {
 
 	// Check if the domain part matches the pattern parts in sequence.
 	pos := 0
+
 	for _, part := range parts {
 		if part == "" {
 			continue
 		}
+
 		index := strings.Index(domainPart[pos:], part)
+
 		if index == -1 {
 			return false
 		}
+
 		pos += index + len(part)
 	}
 
