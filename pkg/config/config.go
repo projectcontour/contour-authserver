@@ -42,6 +42,9 @@ type OIDCConfig struct {
 
 	// T decide wether should this be use
 	SessionSecurityKey string `yaml:"sessionSecurityKey" envconfig:"SESSION_SECURITY_KEY"`
+
+	// AuthorizedRedirectDomains is the domain of the resource server.
+	AuthorizedRedirectDomains []string `yaml:"authorizedRedirectDomains"`
 }
 
 // NewConfig returns a Config struct from serialized config file.
