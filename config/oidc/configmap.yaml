@@ -5,7 +5,7 @@ metadata:
 data:
   auth-svr-config.yaml: |
     address: ":9443"
-    issuerURL: "http://dex.auth.app.192.168.10.134.nip.io:9080"
+    issuerURL: "https://keycloak.dev.gocno.io/realms/demo-realm"
     redirectURL: "https://echo.oidc.app.local:9443"
     redirectPath: "/callback"
     allowEmptyClientSecret: false

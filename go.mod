@@ -9,6 +9,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.12.0
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4
 	github.com/go-logr/logr v1.4.2
+	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/mattn/go-isatty v0.0.20
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.10.0

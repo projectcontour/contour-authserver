@@ -89,7 +89,7 @@ func (cfg *OIDCConfig) Validate() error {
 		{cfg.IssuerURL == "", "no IssuerURL specified"},
 		{cfg.ClientID == "", "no clientID specified"},
 		{cfg.ClientSecret == "" && !cfg.AllowEmptyClientSecret, "no clientSecret specified"},
-		{cfg.RedirectURL == "", "no redirectURL specified"},
+		{cfg.RedirectURL == "" && len(cfg.AuthorizedRedirectDomains) == 0, "redirectURL or AuthorizedRedirectDomains must be specified"},
 		{cfg.RedirectPath == "", "no redirectURL specified"},
 	}
 

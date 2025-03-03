@@ -48,13 +48,21 @@ func NewOIDCConnect() *cobra.Command {
 
 			log.Info("init oidc... ")
 
+			renewTokenCacheConfig := bigcache.DefaultConfig(time.Duration(5) * time.Minute)
+			renewTokenCacheConfig.MaxEntrySize = 5 * 1024              // 5KB per entry
+			renewTokenCacheConfig.MaxEntriesInWindow = 500000          // 500k entries
+			renewTokenCacheConfig.HardMaxCacheSize = 500 * 1024 * 1024 // 500MB
+			renewTokenCacheConfig.CleanWindow = time.Minute
+			renewedTokenCache, _ := bigcache.NewBigCache(renewTokenCacheConfig)
+
 			bigCache, _ := bigcache.NewBigCache(bigcache.DefaultConfig(time.Duration(cfg.CacheTimeout) * time.Minute))
 
 			authOidc := &auth.OIDCConnect{
-				Log:        log,
-				OidcConfig: cfg,
-				Cache:      bigCache,
-				HTTPClient: http.DefaultClient, // need to handle client creation with TLS
+				Log:               log,
+				OidcConfig:        cfg,
+				Cache:             bigCache,
+				HTTPClient:        http.DefaultClient, // need to handle client creation with TLS
+				RenewedTokenCache: renewedTokenCache,
 			}
 
 			listener, err := net.Listen("tcp", authOidc.OidcConfig.Address)

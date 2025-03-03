@@ -20,11 +20,13 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"regexp"
 	"strings"
 
 	"github.com/allegro/bigcache"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/go-logr/logr"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/projectcontour/contour-authserver/pkg/config"
 	"github.com/projectcontour/contour-authserver/pkg/store"
 	"golang.org/x/oauth2"
@@ -42,6 +44,21 @@ type OIDCConnect struct {
 	Cache      *bigcache.BigCache
 	HTTPClient *http.Client
 	provider   *oidc.Provider
+	// RenewedTokenCache stores user authentication information (idtoken and accesstoken)
+	// for 5 minutes when tokens are renewed. This avoids having to do a refresh token
+	// on every user request, since we cannot update user cookies during token renewal.
+	RenewedTokenCache *bigcache.BigCache
+}
+
+type UserInfo struct {
+	Username      string
+	Email         string
+	EmailVerified bool
+	GivenName     string
+	FamilyName    string
+	Nickname      string
+	Roles         []string
+	Groups        []string
 }
 
 // Implement interface.
@@ -62,15 +79,38 @@ func (o *OIDCConnect) Check(ctx context.Context, req *Request) (*Response, error
 
 	url := parseURL(req)
 
+	// check redirect url
+	if o.OidcConfig.RedirectURL == "" && len(o.OidcConfig.AuthorizedRedirectDomains) == 0 {
+		return &Response{}, fmt.Errorf("no redirectURL or AuthorizedRedirectDomains specified")
+	} else if len(o.OidcConfig.AuthorizedRedirectDomains) != 0 {
+		authorized := false
+		for _, domain := range o.OidcConfig.AuthorizedRedirectDomains {
+			domain = strings.TrimPrefix(domain, "*.")
+			if strings.HasSuffix(url.Host, domain) {
+				authorized = true
+				break
+			}
+		}
+		if !authorized {
+			return &Response{}, fmt.Errorf("redirectURL does not match")
+		}
+
+		o.OidcConfig.RedirectURL = fmt.Sprintf("%s://%s", url.Scheme, url.Host)
+
+	}
+
 	// Check if the current request matches the callback path.
 	if url.Path == o.OidcConfig.RedirectPath {
 		resp, err := o.callbackHandler(ctx, url)
 		return &resp, err
 	}
 
+	// Do we have stateid stored in querystring
+	state := o.GetState(ctx, req, url)
 	// Validate the state.
-	resp, valid, err := o.isValidState(ctx, req, url)
+	resp, valid, err := o.isValidState(ctx, state)
 	if err != nil {
+		o.Log.Error(err, "error validating state")
 		return &resp, err
 	}
 
@@ -80,37 +120,22 @@ func (o *OIDCConnect) Check(ctx context.Context, req *Request) (*Response, error
 		return &resp, nil
 	}
 
+	userInfo, resp, err := o.GetUserInfo(ctx, state)
+	if err != nil {
+		return &resp, err
+	}
+
+	// Validate the authorization.
+	resp, authorized, err := o.isAuthorized(req, &resp, url, userInfo)
+	if !authorized {
+		return &resp, err
+	}
+
 	return &resp, nil
 }
 
 // isValidState checks the user token and state validity for subsequent calls.
-func (o *OIDCConnect) isValidState(ctx context.Context, req *Request, url *url.URL) (Response, bool, error) {
-	// Do we have stateid stored in querystring
-	var state *store.OIDCState
-
-	// Check if there's a bearer token in the Authorization header
-	authHeader := req.Request.Header.Get("Authorization")
-	if strings.HasPrefix(authHeader, "Bearer ") {
-		// Extract the token
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		// Create new state with the token
-		state = store.NewState()
-		state.Status = store.StatusTokenReady
-		state.IDToken = token
-	} else {
-		stateToken := url.Query().Get(stateQueryParamName)
-
-		stateByte, err := o.Cache.Get(stateToken)
-		if err == nil {
-			state = store.ConvertToType(stateByte)
-		}
-		// State not found, try to retrieve from cookies.
-		if state == nil {
-			state, _ = o.getStateFromCookie(req)
-		}
-	}
-
-	// State exists, proceed with token validation.
+func (o *OIDCConnect) isValidState(ctx context.Context, state *store.OIDCState) (Response, bool, error) {
 	// State exists, proceed with token validation.
 	if state != nil {
 		// Re-initialize provider to refresh the context, this seems like bugs with coreos go-oidc module.
@@ -120,23 +145,137 @@ func (o *OIDCConnect) isValidState(ctx context.Context, req *Request, url *url.U
 			return createResponse(http.StatusInternalServerError), false, err
 		}
 
-		if o.isValidStateToken(ctx, state, provider) {
-			stateJSON, _ := json.Marshal(state)
-			// Restore cookies.
-			resp := createResponse(http.StatusOK)
-
-			resp.Response.Header.Add(oauthTokenName, string(stateJSON))
-
-			if err := o.Cache.Delete(state.OAuthState); err != nil && err != bigcache.ErrEntryNotFound {
-				o.Log.Error(err, "error deleting state")
+		if !o.isValidStateToken(ctx, state, provider) {
+			if err := o.refreshTokens(ctx, state, provider); err != nil {
+				o.Log.Error(err, "fail to refresh tokens")
+				return Response{}, false, nil
 			}
-
-			return resp, true, nil
 		}
+
+		stateJSON, _ := json.Marshal(state)
+		// Restore cookies.
+		resp := createResponse(http.StatusOK)
+
+		resp.Response.Header.Add(oauthTokenName, string(stateJSON))
+
+		if err := o.Cache.Delete(state.OAuthState); err != nil && err != bigcache.ErrEntryNotFound {
+			o.Log.Error(err, "error deleting state")
+		}
+
+		return resp, true, nil
 	}
 
 	// return empty response, will direct to loginHandler
 	return Response{}, false, nil
+}
+
+// refreshTokens refreshes the access and ID tokens using the refresh token.
+func (o *OIDCConnect) refreshTokens(ctx context.Context, state *store.OIDCState, provider *oidc.Provider) error {
+	o.Log.Info("refreshing tokens...")
+	tokenSource := o.oauth2Config().TokenSource(ctx, &oauth2.Token{
+		RefreshToken: state.RefreshToken,
+	})
+
+	newToken, err := tokenSource.Token()
+	if err != nil {
+		o.Log.Error(err, "failed to refresh token")
+		return err
+	}
+
+	// Get new ID token from the token response
+	rawIDToken, ok := newToken.Extra("id_token").(string)
+	if !ok {
+		return fmt.Errorf("no id_token in token response")
+	}
+
+	// Verify the new ID token
+	verifier := provider.Verifier(&oidc.Config{
+		ClientID:        o.OidcConfig.ClientID,
+		SkipIssuerCheck: o.OidcConfig.SkipIssuerCheck,
+	})
+
+	idToken, err := verifier.Verify(ctx, rawIDToken)
+	if err != nil {
+		o.Log.Error(err, "failed to verify refreshed ID token")
+		return err
+	}
+	// Try to claim.
+	var claims json.RawMessage
+	if err := idToken.Claims(&claims); err != nil {
+		o.Log.Error(err, "error decoding ID token")
+		return err
+	}
+
+	// Update state with new id and access tokens
+	state.IDToken = rawIDToken
+	state.AccessToken = newToken.AccessToken
+
+	// Only cache the ID token and access token since those are the only values
+	// that change during token refresh
+	stateToStore := store.NewState()
+	stateToStore.IDToken = rawIDToken
+	stateToStore.AccessToken = newToken.AccessToken
+	err = o.RenewedTokenCache.Set(state.OAuthState, store.ConvertToByte(stateToStore))
+	if err != nil {
+		o.Log.Error(err, "error setting cache state")
+	}
+
+	return nil
+}
+
+func (o *OIDCConnect) GetState(ctx context.Context, req *Request, url *url.URL) *store.OIDCState {
+	var state *store.OIDCState
+
+	stateToken := url.Query().Get(stateQueryParamName)
+
+	stateByte, err := o.Cache.Get(stateToken)
+	if err == nil {
+		state = store.ConvertToType(stateByte)
+	} else {
+		// State not found, try to retrieve from cookies.
+		state, _ = o.getStateFromCookie(req)
+	}
+
+	// Check if state has been updated and stored in RenewedTokenCache
+	if state != nil && state.OAuthState != "" {
+
+		data, err := o.RenewedTokenCache.Get(state.OAuthState)
+		if err == nil {
+			cachedState := store.ConvertToType(data)
+			if cachedState != nil {
+				state.IDToken = cachedState.IDToken
+				state.AccessToken = cachedState.AccessToken
+				return state
+			}
+		}
+
+	}
+
+	return state
+}
+
+// getStateFromCookie retrieve state token from cookie header and return the value as OIDCState.
+func (o *OIDCConnect) getStateFromCookie(req *Request) (*store.OIDCState, error) {
+	var state *store.OIDCState
+
+	cookieVal := req.Request.Header.Get("cookie")
+
+	// Check through and get the right cookies
+	if len(cookieVal) > 0 {
+		cookies := strings.Split(cookieVal, ";")
+		for _, c := range cookies {
+			c = strings.TrimSpace(c)
+			if strings.HasPrefix(c, oauthTokenName) {
+				cookieJSON := c[len(oauthTokenName)+1:]
+				if len(cookieJSON) > 0 {
+					state = store.ConvertToType([]byte(cookieJSON))
+					return state, nil
+				}
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("no %q cookie", oauthTokenName)
 }
 
 // loginHandler takes a url returning a Response with a new state that is required by oauth during initial user login.
@@ -146,14 +285,9 @@ func (o *OIDCConnect) loginHandler(u *url.URL) Response {
 	state.RequestPath = path.Join(u.Host, u.Path)
 	state.Scheme = u.Scheme
 
-	config := o.oauth2Config()
-
-	redirectURL := fmt.Sprintf("%s://%s%s", u.Scheme, u.Host, u.Path)
-	if redirectURL != config.RedirectURL && matchDomain(redirectURL, o.OidcConfig.AuthorizedRedirectDomains) {
-		config.RedirectURL = redirectURL
-	}
-
 	authCodeURL := o.oauth2Config().AuthCodeURL(state.OAuthState)
+
+	o.Log.Info("Redirecting to", "authCodeURL", authCodeURL)
 
 	byteState := store.ConvertToByte(state)
 	if err := o.Cache.Set(state.OAuthState, byteState); err != nil {
@@ -225,11 +359,7 @@ func (o *OIDCConnect) callbackHandler(ctx context.Context, u *url.URL) (Response
 
 	stateJSON, _ := json.Marshal(state)
 	resp.Response.Header.Add("Set-Cookie",
-		fmt.Sprintf("%s=%s; Path=/; Secure; SameSite=Lax", oauthTokenName, string(stateJSON)))
-
-	// TODO(robinfoe) #18 : OIDC support should propagate any claims back to the request
-	resp.Response.Header.Add("Set-Cookie",
-		fmt.Sprintf("%s=%s; Path=/; Secure; SameSite=Lax", oauthTokenName, string(stateJSON)))
+		fmt.Sprintf("%s=%s; Path=/; HttpOnly; Secure; SameSite=Lax", oauthTokenName, string(stateJSON)))
 
 	return resp, nil
 }
@@ -263,28 +393,252 @@ func (o *OIDCConnect) isValidStateToken(ctx context.Context, state *store.OIDCSt
 	return true
 }
 
-// getStateFromCookie retrieve state token from cookie header and return the value as OIDCState.
-func (o *OIDCConnect) getStateFromCookie(req *Request) (*store.OIDCState, error) {
-	var state *store.OIDCState
+// isAuthorized checks the user role and groups against the authorized
+// roles and groups from the Auth-Context-%s headers.
+func (o *OIDCConnect) isAuthorized(
+	req *Request,
+	resp *Response,
+	url *url.URL,
+	userInfo *UserInfo,
+) (Response, bool, error) {
+	for rule, requiredPrivileges := range req.Context {
+		o.Log.Info("context", "rule", rule, "requiredPrivileges", requiredPrivileges)
+		if o.isRuleApplicableToMethodAndPath(rule, req.Request.Method, url.Path) {
+			o.Log.Info("rule applicable", "rule", rule, "requiredPrivileges", requiredPrivileges)
+			if !o.hasRequiredPermissions(rule, requiredPrivileges, url.Path, userInfo) {
+				o.Log.Info("rule not allowed", "rule", rule, "requiredPrivileges", requiredPrivileges, "userInfo", userInfo)
+				return createResponse(http.StatusUnauthorized), false, nil
+			}
+			o.Log.Info("rule allowed", "rule", rule, "requiredPrivileges", requiredPrivileges, "userInfo", userInfo)
+		}
+	}
 
-	cookieVal := req.Request.Header.Get("cookie")
+	// Propagate the user info to the response headers.
+	o.PropagateUserInfo(resp, userInfo)
 
-	// Check through and get the right cookies
-	if len(cookieVal) > 0 {
-		cookies := strings.Split(cookieVal, ";")
-		for _, c := range cookies {
-			c = strings.TrimSpace(c)
-			if strings.HasPrefix(c, oauthTokenName) {
-				cookieJSON := c[len(oauthTokenName)+1:]
-				if len(cookieJSON) > 0 {
-					state = store.ConvertToType([]byte(cookieJSON))
-					return state, nil
+	return *resp, true, nil
+}
+
+func (o *OIDCConnect) isRuleApplicableToMethodAndPath(rule, method, path string) bool {
+	parts := strings.Split(rule, ";")
+	if len(parts) > 3 {
+		return false
+	} else if len(parts) < 2 {
+		return true
+	}
+
+	if len(parts) == 3 && !o.isMethodMarched(parts[0], method) {
+		return false
+	}
+
+	if !o.isPathMatched(parts[1], path) {
+		return false
+	}
+
+	return true
+}
+
+func (o *OIDCConnect) isMethodMarched(methodsPart, method string) bool {
+	methods := strings.Split(methodsPart, "|")
+	return contains(methods, method)
+}
+
+func (o *OIDCConnect) isPathMatched(pathsPart, path string) bool {
+	paths := strings.Split(pathsPart, "|")
+	for _, p := range paths {
+		if _, ok := o.matchPatternWithVars(p, path); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func (o *OIDCConnect) hasRequiredPermissions(
+	rule, requiredPrivileges string,
+	path string,
+	userInfo *UserInfo,
+) bool {
+	parts := strings.Split(rule, ";")
+	privilegesType := parts[len(parts)-1]
+	userPrivileges := o.getUserPrivileges(privilegesType, userInfo)
+
+	o.Log.Info("hasRequiredPermissions", "rule", rule, "requiredPrivileges", requiredPrivileges, "userPrivileges", userPrivileges)
+
+	if len(parts) < 2 || len(parts) > 3 {
+		for _, requiredPrivilege := range strings.Split(requiredPrivileges, "|") {
+			if contains(userPrivileges, requiredPrivilege) {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, requiredPrivilege := range strings.Split(requiredPrivileges, "|") {
+		pattern := parts[1]
+		if variables, ok := o.matchPatternWithVars(pattern, path); ok {
+			if o.isPrivilegeMatched(requiredPrivilege, userPrivileges, variables) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (o *OIDCConnect) isPrivilegeMatched(requiredPrivilege string, userPrivileges []string, variables map[string]string) bool {
+	for _, privilege := range userPrivileges {
+		if o.matchPrivilege(requiredPrivilege, privilege, variables) {
+			return true
+		}
+	}
+	return false
+}
+
+func (o *OIDCConnect) getUserPrivileges(privilegesType string, userInfo *UserInfo) []string {
+	if privilegesType == "roles" || privilegesType == "required_roles" || privilegesType == "required_role" {
+		return userInfo.Roles
+	} else if privilegesType == "groups" || privilegesType == "required_groups" || privilegesType == "required_group" {
+		return userInfo.Groups
+	}
+	return []string{}
+}
+
+// PropagateUserInfo propagates the user info to the response headers.
+func (o *OIDCConnect) PropagateUserInfo(resp *Response, userInfo *UserInfo) {
+	if userInfo == nil {
+		return
+	}
+
+	resp.Response.Header.Add("X-Auth-User-Username", userInfo.Username)
+	resp.Response.Header.Add("X-Auth-User-Email", userInfo.Email)
+	resp.Response.Header.Add("X-Auth-User-Email-Verified", fmt.Sprintf("%v", userInfo.EmailVerified))
+	resp.Response.Header.Add("X-Auth-User-Given-Name", userInfo.GivenName)
+	resp.Response.Header.Add("X-Auth-User-Family-Name", userInfo.FamilyName)
+	resp.Response.Header.Add("X-Auth-User-Nickname", userInfo.Nickname)
+	resp.Response.Header.Add("X-Auth-User-Roles", strings.Join(userInfo.Roles, ","))
+	resp.Response.Header.Add("X-Auth-User-Groups", strings.Join(userInfo.Groups, ","))
+}
+
+func (o *OIDCConnect) GetUserInfo(ctx context.Context, state *store.OIDCState) (*UserInfo, Response, error) {
+	if state == nil {
+		return nil, createResponse(http.StatusUnauthorized), fmt.Errorf("state is nil")
+	}
+
+	verifier := o.provider.Verifier(&oidc.Config{
+		ClientID:        o.OidcConfig.ClientID,
+		SkipIssuerCheck: o.OidcConfig.SkipIssuerCheck,
+	})
+
+	// Verify token and signature.
+	idToken, err := verifier.Verify(ctx, state.IDToken)
+	if err != nil {
+		o.Log.Info(fmt.Sprintf("failed to verify ID token: %v", err))
+		return nil, createResponse(http.StatusUnauthorized), err
+	}
+
+	claims, err := o.extractClaims(idToken)
+	if err != nil {
+		return nil, createResponse(http.StatusUnauthorized), err
+	}
+
+	userInfo, err := o.populateUserInfo(claims)
+	if err != nil {
+		return nil, createResponse(http.StatusUnauthorized), err
+	}
+
+	if err := o.verifyAccessToken(idToken, state.AccessToken); err != nil {
+		return nil, createResponse(http.StatusUnauthorized), err
+	}
+
+	roles, groups, err := o.extractRolesAndGroups(state.AccessToken)
+	if err != nil {
+		return nil, createResponse(http.StatusUnauthorized), err
+	}
+
+	userInfo.Roles = roles
+	userInfo.Groups = groups
+
+	return &userInfo, createResponse(http.StatusOK), nil
+}
+
+func (o *OIDCConnect) extractClaims(idToken *oidc.IDToken) (map[string]interface{}, error) {
+	var claims json.RawMessage
+	if err := idToken.Claims(&claims); err != nil {
+		o.Log.Error(err, "error decoding ID token")
+		return nil, err
+	}
+
+	var claimsMap map[string]interface{}
+	if err := json.Unmarshal(claims, &claimsMap); err != nil {
+		o.Log.Error(err, "error unmarshaling claims")
+		return nil, err
+	}
+
+	return claimsMap, nil
+}
+
+func (o *OIDCConnect) populateUserInfo(claims map[string]interface{}) (UserInfo, error) {
+	userInfo := UserInfo{}
+
+	for k, v := range claims {
+		switch k {
+		case "username":
+			userInfo.Username = v.(string)
+		case "email":
+			userInfo.Email = v.(string)
+		case "email_verified":
+			userInfo.EmailVerified = v.(bool)
+		case "given_name":
+			userInfo.GivenName = v.(string)
+		case "family_name":
+			userInfo.FamilyName = v.(string)
+		case "nickname":
+			userInfo.Nickname = v.(string)
+		}
+	}
+
+	return userInfo, nil
+}
+
+func (o *OIDCConnect) verifyAccessToken(idToken *oidc.IDToken, accessToken string) error {
+	if accessToken != "" {
+		if err := idToken.VerifyAccessToken(accessToken); err != nil {
+			o.Log.Error(err, "access token not verified")
+			return err
+		}
+	}
+	return nil
+}
+
+func (o *OIDCConnect) extractRolesAndGroups(accessToken string) ([]string, []string, error) {
+	token, _, err := new(jwt.Parser).ParseUnverified(accessToken, jwt.MapClaims{})
+	if err != nil {
+		return nil, nil, fmt.Errorf("error parsing token: %v", err)
+	}
+
+	roles := []string{}
+	groups := []string{}
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
+		o.Log.Info("get user infos", "claims", claims)
+		for k, v := range claims {
+			switch k {
+			case "realm_access":
+				realmAccess := v.(map[string]interface{})
+				if rolesList, ok := realmAccess["roles"].([]interface{}); ok {
+					for _, role := range rolesList {
+						roles = append(roles, role.(string))
+					}
+				}
+			case "groups":
+				for _, group := range v.([]interface{}) {
+					groups = append(groups, group.(string))
 				}
 			}
 		}
 	}
 
-	return nil, fmt.Errorf("no %q cookie", oauthTokenName)
+	return roles, groups, nil
 }
 
 // initProvider initialize oidc provide with ths given issuer URL. return oidc.Provider.
@@ -340,64 +694,67 @@ func parseURL(req *Request) *url.URL {
 	return u
 }
 
-// matchDomain checks if a domain matches any of the allowed patterns.
-func matchDomain(domain string, allowedPatterns []string) bool {
-	for _, pattern := range allowedPatterns {
-		if matchPattern(domain, pattern) {
+// contains checks if a string is present in a slice of strings.
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if strings.EqualFold(s, item) {
 			return true
 		}
 	}
-
 	return false
 }
 
-// matchPattern checks if a domain matches a single pattern with wildcards.
-func matchPattern(domain, pattern string) bool {
-	// Split the pattern and domain into parts.
-	patternParts := strings.Split(pattern, ".")
-	domainParts := strings.Split(domain, ".")
-
-	// If the number of parts doesn't match, it's not a match.
-	if len(patternParts) != len(domainParts) {
-		return false
+// matchRole checks if the user's role matches the required role.
+func (o *OIDCConnect) matchPrivilege(requiredPrivilege, userPrivilege string, variables map[string]string) bool {
+	// Replace variables in the required role with extracted values
+	o.Log.Info("matchPrivilege", "requiredPrivilege", requiredPrivilege, "userPrivilege", userPrivilege, "variables", variables)
+	for key, value := range variables {
+		requiredPrivilege = strings.ReplaceAll(requiredPrivilege, "$"+key, value)
 	}
+	o.Log.Info("aftermatchPrivilege", "requiredPrivilege", requiredPrivilege, "userPrivilege", userPrivilege, "variables", variables)
 
-	// Check each part of the pattern against the domain.
-	for i := range patternParts {
-		if !matchPart(domainParts[i], patternParts[i]) {
-			return false
-		}
-	}
-
-	return true
+	return requiredPrivilege == userPrivilege
 }
 
-// matchPart checks if a single part of the domain matches the pattern part.
-func matchPart(domainPart, patternPart string) bool {
-	// If the pattern part is a wildcard, it matches anything.
-	if patternPart == "*" {
-		return true
+// matchPatternWithVars checks if the path matches the pattern and extracts variables.
+func (o *OIDCConnect) matchPatternWithVars(pattern, path string) (map[string]string, bool) {
+	o.Log.Info("matchPatternWithVars 0", "pattern", pattern, "path", path)
+	// Replace variables in the pattern with regular expressions
+	re := regexp.MustCompile(`\$(\w+)`)
+	patternRegex := re.ReplaceAllStringFunc(pattern, func(s string) string {
+		return `(?P<` + s[1:] + `>[^/]+)`
+	})
+
+	// Replace * with [^/]* to match zero or more characters that are not /
+	patternRegex = strings.ReplaceAll(patternRegex, "*", "[^/]*")
+
+	// Ensure that /[^/]*/ is replaced with /[^/]+/ to avoid empty segments
+	patternRegex = strings.ReplaceAll(patternRegex, "/[^/]*/", "/[^/]+/")
+
+	// Handle trailing /* by allowing an optional segment
+	if strings.HasSuffix(pattern, "/*") {
+		patternRegex = strings.TrimSuffix(patternRegex, "/[^/]*") + "(/[^/]+)?"
 	}
 
-	// Split the pattern part by the wildcard.
-	parts := strings.Split(patternPart, "*")
+	// Allow an optional trailing slash
+	patternRegex = patternRegex + "/?"
 
-	// Check if the domain part matches the pattern parts in sequence.
-	pos := 0
-
-	for _, part := range parts {
-		if part == "" {
-			continue
-		}
-
-		index := strings.Index(domainPart[pos:], part)
-
-		if index == -1 {
-			return false
-		}
-
-		pos += index + len(part)
+	// Check if the path matches the pattern
+	re = regexp.MustCompile("^" + patternRegex + "$")
+	match := re.FindStringSubmatch(path)
+	if match == nil {
+		o.Log.Info("matchPatternWithVars 1", "pattern", pattern, "path", path, "match", match)
+		return nil, false
 	}
 
-	return true
+	o.Log.Info("matchPatternWithVars okkk", "pattern", pattern, "path", path, "match", match)
+	// Extract variables
+	variables := make(map[string]string)
+	for i, name := range re.SubexpNames() {
+		if i != 0 && name != "" {
+			variables[name] = match[i]
+		}
+	}
+
+	return variables, true
 }
