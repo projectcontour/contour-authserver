@@ -16,8 +16,11 @@ package auth
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/go-logr/logr"
@@ -42,8 +45,8 @@ type Htpasswd struct {
 	Client    client.Client
 	Passwords *htpasswd.File
 	Selector  labels.Selector
-
-	Lock sync.Mutex
+	LoginPath string
+	Lock      sync.Mutex
 }
 
 var _ Checker = &Htpasswd{}
@@ -85,6 +88,19 @@ func (h *Htpasswd) Check(ctx context.Context, request *Request) (*Response, erro
 
 	user, pass, ok := request.Request.BasicAuth()
 
+	if !ok {
+		// Try to get credentials from cookie if basic auth header not present
+		if cookie, err := request.Request.Cookie("basic-auth"); err == nil {
+			if decoded, err := base64.StdEncoding.DecodeString(cookie.Value); err == nil {
+				parts := strings.Split(string(decoded), ":")
+				if len(parts) == 2 {
+					user = parts[0]
+					pass = parts[1]
+					ok = true
+				}
+			}
+		}
+	}
 	// If there's an "Authorization" header and we can verify
 	// it, succeed and inject some headers to tell the origin
 	//what  we did.
@@ -113,6 +129,13 @@ func (h *Htpasswd) Check(ctx context.Context, request *Request) (*Response, erro
 		}, nil
 	}
 
+	url := parseURL(request)
+
+	// Check if the current request matches the callback path.
+	if url.Path == h.LoginPath {
+		return h.loginHandler()
+	}
+
 	// If there's no "Authorization" header, or the authentication
 	// failed, send an authenticate request.
 	return &Response{
@@ -122,6 +145,78 @@ func (h *Htpasswd) Check(ctx context.Context, request *Request) (*Response, erro
 			Header: http.Header{
 				"WWW-Authenticate": {fmt.Sprintf(`Basic realm="%s", charset="UTF-8"`, h.Realm)},
 			},
+		},
+	}, nil
+}
+
+func (h *Htpasswd) loginHandler() (*Response, error) {
+	// Return HTML with JavaScript for login modal
+	loginHTML := `
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+.modal { 
+    display: block;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 20px;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.3);
+}
+.modal input {
+    display: block;
+    margin: 10px 0;
+    padding: 5px;
+    width: 200px;
+}
+.modal button {
+    background: #4CAF50;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+}
+</style>
+</head>
+<body>
+<div class="modal">
+    <h2>Login</h2>
+    <input type="text" id="username" placeholder="Username">
+    <input type="password" id="password" placeholder="Password">
+    <button onclick="login()">Login</button>
+</div>
+
+<script>
+function login() {
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    
+    // Create base64 encoded credentials
+    const credentials = btoa(username + ':' + password);
+    
+    // Set cookie
+    document.cookie = 'basic-auth=' + credentials + '; Path=/; HttpOnly; Secure; SameSite=Lax';
+    
+    // Redirect back to original URL
+    window.location.href = '/';
+}
+</script>
+</body>
+</html>`
+
+	return &Response{
+		Allow: false,
+		Response: http.Response{
+			StatusCode: http.StatusUnauthorized,
+			Header: http.Header{
+				"Content-Type": {"text/html"},
+			},
+			Body: io.NopCloser(strings.NewReader(loginHTML)),
 		},
 	}, nil
 }
