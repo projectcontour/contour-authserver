@@ -13,8 +13,8 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tg123/go-htpasswd v1.2.3
 	golang.org/x/oauth2 v0.28.0
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20241202173237-19429a94021a
-	google.golang.org/grpc v1.70.0
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250115164207-1a7da9e5054f
+	google.golang.org/grpc v1.71.0
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.32.2
 	k8s.io/apimachinery v0.32.2
@@ -26,7 +26,7 @@ require (
 	github.com/GehirnInc/crypt v0.0.0-20230320061759-8cc1b52080c5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cncf/xds/go v0.0.0-20240905190251-b4127c9b8d78 // indirect
+	github.com/cncf/xds/go v0.0.0-20241223141626-cff3c89139a3 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.12.1 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
