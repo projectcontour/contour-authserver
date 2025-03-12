@@ -86,11 +86,14 @@ func (h *Htpasswd) Check(ctx context.Context, request *Request) (*Response, erro
 		"id", request.ID,
 	)
 
+	h.Log.Info("request", "request", request.Request)
 	user, pass, ok := request.Request.BasicAuth()
 
 	if !ok {
+		h.Log.Info("no basic auth header")
 		// Try to get credentials from cookie if basic auth header not present
 		if cookie, err := request.Request.Cookie("basic-auth"); err == nil {
+			h.Log.Info("cookie", "cookie", cookie)
 			if decoded, err := base64.StdEncoding.DecodeString(cookie.Value); err == nil {
 				parts := strings.Split(string(decoded), ":")
 				if len(parts) == 2 {
@@ -101,10 +104,14 @@ func (h *Htpasswd) Check(ctx context.Context, request *Request) (*Response, erro
 			}
 		}
 	}
+	h.Log.Info("user", "user", user)
+	h.Log.Info("pass", "pass", pass)
+	h.Log.Info("ok", "ok", ok)
 	// If there's an "Authorization" header and we can verify
 	// it, succeed and inject some headers to tell the origin
 	//what  we did.
 	if ok && h.Match(user, pass) {
+		h.Log.Info("match")
 		// TODO(jpeach) inject context attributes into the headers.
 		authorized := http.Response{
 			StatusCode: http.StatusOK,
@@ -114,6 +121,7 @@ func (h *Htpasswd) Check(ctx context.Context, request *Request) (*Response, erro
 				"Auth-Realm":    {h.Realm},
 			},
 		}
+		h.Log.Info("authorized", "authorized", authorized)
 
 		// Reflect the authorization check context into the response headers.
 		for k, v := range request.Context {
@@ -130,11 +138,14 @@ func (h *Htpasswd) Check(ctx context.Context, request *Request) (*Response, erro
 	}
 
 	url := parseURL(request)
-
+	h.Log.Info("url", "url", url)
+	h.Log.Info("login path", "login path", h.LoginPath, "url path", url.Path)
 	// Check if the current request matches the callback path.
 	if url.Path == h.LoginPath {
+		h.Log.Info("login path")
 		return h.loginHandler()
 	}
+	h.Log.Info("not login path")
 
 	// If there's no "Authorization" header, or the authentication
 	// failed, send an authenticate request.
@@ -150,6 +161,7 @@ func (h *Htpasswd) Check(ctx context.Context, request *Request) (*Response, erro
 }
 
 func (h *Htpasswd) loginHandler() (*Response, error) {
+	h.Log.Info("loginHandler")
 	// Return HTML with JavaScript for login modal
 	loginHTML := `
 <!DOCTYPE html>
