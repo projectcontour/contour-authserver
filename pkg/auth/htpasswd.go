@@ -19,6 +19,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -55,14 +56,14 @@ var _ Checker = &Htpasswd{}
 func (h *Htpasswd) Set(passwd *htpasswd.File) {
 	h.Lock.Lock()
 	defer h.Lock.Unlock()
-
+	log.Println("debug version Set")
 	h.Passwords = passwd
 }
 
 // Match authenticates the credential against the htpasswd file.
 func (h *Htpasswd) Match(user string, pass string) bool {
 	var passwd *htpasswd.File
-
+	log.Println("debug version Match")
 	// Arguably, getting and setting the pointer is atomic, but
 	// Go doesn't make any guarantees.
 	h.Lock.Lock()
@@ -237,6 +238,8 @@ function login() {
 func (h *Htpasswd) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var opts []client.ListOption
 
+	log.Println("debug version reconcile")
+
 	if h.Selector != nil {
 		opts = append(opts, client.MatchingLabelsSelector{Selector: h.Selector})
 	}
@@ -246,6 +249,8 @@ func (h *Htpasswd) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result
 	if err := h.Client.List(ctx, secrets, opts...); err != nil {
 		return ctrl.Result{}, err
 	}
+
+	log.Println("debug version reconcile 2", len(secrets.Items))
 
 	passwdData := bytes.Buffer{}
 
@@ -261,6 +266,8 @@ func (h *Htpasswd) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result
 				continue
 			}
 		}
+
+		log.Println("debug version reconcile 3")
 
 		// Check for the "auth" key, which is the format used by ingress-nginx.
 		authData, ok := s.Data["auth"]
@@ -287,6 +294,7 @@ func (h *Htpasswd) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result
 		}
 
 		if hasBadLine {
+			log.Println("debug version reconcile 4")
 			continue
 		}
 
@@ -305,6 +313,8 @@ func (h *Htpasswd) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result
 	}
 
 	h.Set(newPasswd)
+
+	log.Println("debug version reconcile 5")
 
 	return ctrl.Result{}, nil
 }

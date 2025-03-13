@@ -39,6 +39,8 @@ func NewHtpasswdCommand() *cobra.Command {
 
 			scheme.AddToScheme(s) //nolint:gosec,errcheck
 
+			log.Info("debug version cli.htpasswd.go")
+
 			options := ctrl.Options{
 				Scheme: s,
 				Metrics: ctrl_metrics_server.Options{
@@ -97,6 +99,7 @@ func NewHtpasswdCommand() *cobra.Command {
 					"address", mustString(cmd.Flags().GetString("address")),
 					"realm", htpasswd.Realm)
 
+				log.Info("debug version cli.htpasswd.go 2 tun server")
 				if err := auth.RunServer(ctx, listener, srv); err != nil {
 					errChan <- ExitErrorf(EX_FAIL, "authorization server failed: %w", err)
 				}

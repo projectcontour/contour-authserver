@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"os"
 
+	"log"
+
 	"github.com/projectcontour/contour-authserver/pkg/cli"
 	"github.com/projectcontour/contour-authserver/pkg/version"
 
@@ -38,6 +40,7 @@ func main() {
 		Short:   "Authentication server for the Envoy proxy",
 		Version: fmt.Sprintf("%s/%s, built %s", version.Version, version.Sha, version.BuildDate),
 	})
+	log.Println("debug version", version.Version)
 
 	root.AddCommand(cli.Defaults(cli.NewTestserverCommand()))
 	root.AddCommand(cli.Defaults(cli.NewHtpasswdCommand()))
