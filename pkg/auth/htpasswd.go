@@ -16,12 +16,8 @@ package auth
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"fmt"
-	"io"
-	"log"
 	"net/http"
-	"strings"
 	"sync"
 
 	"github.com/go-logr/logr"
@@ -46,8 +42,8 @@ type Htpasswd struct {
 	Client    client.Client
 	Passwords *htpasswd.File
 	Selector  labels.Selector
-	LoginPath string
-	Lock      sync.Mutex
+
+	Lock sync.Mutex
 }
 
 var _ Checker = &Htpasswd{}
@@ -56,14 +52,14 @@ var _ Checker = &Htpasswd{}
 func (h *Htpasswd) Set(passwd *htpasswd.File) {
 	h.Lock.Lock()
 	defer h.Lock.Unlock()
-	log.Println("debug version Set")
+
 	h.Passwords = passwd
 }
 
 // Match authenticates the credential against the htpasswd file.
 func (h *Htpasswd) Match(user string, pass string) bool {
 	var passwd *htpasswd.File
-	log.Println("debug version Match")
+
 	// Arguably, getting and setting the pointer is atomic, but
 	// Go doesn't make any guarantees.
 	h.Lock.Lock()
@@ -87,32 +83,12 @@ func (h *Htpasswd) Check(ctx context.Context, request *Request) (*Response, erro
 		"id", request.ID,
 	)
 
-	h.Log.Info("request", "request", request.Request)
 	user, pass, ok := request.Request.BasicAuth()
 
-	if !ok {
-		h.Log.Info("no basic auth header")
-		// Try to get credentials from cookie if basic auth header not present
-		if cookie, err := request.Request.Cookie("basic-auth"); err == nil {
-			h.Log.Info("cookie", "cookie", cookie)
-			if decoded, err := base64.StdEncoding.DecodeString(cookie.Value); err == nil {
-				parts := strings.Split(string(decoded), ":")
-				if len(parts) == 2 {
-					user = parts[0]
-					pass = parts[1]
-					ok = true
-				}
-			}
-		}
-	}
-	h.Log.Info("user", "user", user)
-	h.Log.Info("pass", "pass", pass)
-	h.Log.Info("ok", "ok", ok)
 	// If there's an "Authorization" header and we can verify
 	// it, succeed and inject some headers to tell the origin
 	//what  we did.
 	if ok && h.Match(user, pass) {
-		h.Log.Info("match")
 		// TODO(jpeach) inject context attributes into the headers.
 		authorized := http.Response{
 			StatusCode: http.StatusOK,
@@ -122,7 +98,6 @@ func (h *Htpasswd) Check(ctx context.Context, request *Request) (*Response, erro
 				"Auth-Realm":    {h.Realm},
 			},
 		}
-		h.Log.Info("authorized", "authorized", authorized)
 
 		// Reflect the authorization check context into the response headers.
 		for k, v := range request.Context {
@@ -138,16 +113,6 @@ func (h *Htpasswd) Check(ctx context.Context, request *Request) (*Response, erro
 		}, nil
 	}
 
-	url := parseURL(request)
-	h.Log.Info("url", "url", url)
-	h.Log.Info("login path", "login path", h.LoginPath, "url path", url.Path)
-	// Check if the current request matches the callback path.
-	if url.Path == h.LoginPath {
-		h.Log.Info("login path")
-		return h.loginHandler()
-	}
-	h.Log.Info("not login path")
-
 	// If there's no "Authorization" header, or the authentication
 	// failed, send an authenticate request.
 	return &Response{
@@ -161,84 +126,9 @@ func (h *Htpasswd) Check(ctx context.Context, request *Request) (*Response, erro
 	}, nil
 }
 
-func (h *Htpasswd) loginHandler() (*Response, error) {
-	h.Log.Info("loginHandler")
-	// Return HTML with JavaScript for login modal
-	loginHTML := `
-<!DOCTYPE html>
-<html>
-<head>
-<style>
-.modal { 
-    display: block;
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: white;
-    padding: 20px;
-    border-radius: 5px;
-    box-shadow: 0 0 10px rgba(0,0,0,0.3);
-}
-.modal input {
-    display: block;
-    margin: 10px 0;
-    padding: 5px;
-    width: 200px;
-}
-.modal button {
-    background: #4CAF50;
-    color: white;
-    padding: 10px 15px;
-    border: none;
-    border-radius: 3px;
-    cursor: pointer;
-}
-</style>
-</head>
-<body>
-<div class="modal">
-    <h2>Login</h2>
-    <input type="text" id="username" placeholder="Username">
-    <input type="password" id="password" placeholder="Password">
-    <button onclick="login()">Login</button>
-</div>
-
-<script>
-function login() {
-    const username = document.getElementById('username').value;
-    const password = document.getElementById('password').value;
-    
-    // Create base64 encoded credentials
-    const credentials = btoa(username + ':' + password);
-    
-    // Set cookie
-    document.cookie = 'basic-auth=' + credentials + '; Path=/; HttpOnly; Secure; SameSite=Lax';
-    
-    // Redirect back to original URL
-    window.location.href = '/';
-}
-</script>
-</body>
-</html>`
-
-	return &Response{
-		Allow: false,
-		Response: http.Response{
-			StatusCode: http.StatusUnauthorized,
-			Header: http.Header{
-				"Content-Type": {"text/html"},
-			},
-			Body: io.NopCloser(strings.NewReader(loginHTML)),
-		},
-	}, nil
-}
-
 // Reconcile ...
 func (h *Htpasswd) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var opts []client.ListOption
-
-	log.Println("debug version reconcile")
 
 	if h.Selector != nil {
 		opts = append(opts, client.MatchingLabelsSelector{Selector: h.Selector})
@@ -249,8 +139,6 @@ func (h *Htpasswd) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result
 	if err := h.Client.List(ctx, secrets, opts...); err != nil {
 		return ctrl.Result{}, err
 	}
-
-	log.Println("debug version reconcile 2", len(secrets.Items))
 
 	passwdData := bytes.Buffer{}
 
@@ -266,8 +154,6 @@ func (h *Htpasswd) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result
 				continue
 			}
 		}
-
-		log.Println("debug version reconcile 3")
 
 		// Check for the "auth" key, which is the format used by ingress-nginx.
 		authData, ok := s.Data["auth"]
@@ -294,7 +180,6 @@ func (h *Htpasswd) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result
 		}
 
 		if hasBadLine {
-			log.Println("debug version reconcile 4")
 			continue
 		}
 
@@ -313,8 +198,6 @@ func (h *Htpasswd) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result
 	}
 
 	h.Set(newPasswd)
-
-	log.Println("debug version reconcile 5")
 
 	return ctrl.Result{}, nil
 }

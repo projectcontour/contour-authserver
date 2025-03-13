@@ -39,8 +39,6 @@ func NewHtpasswdCommand() *cobra.Command {
 
 			scheme.AddToScheme(s) //nolint:gosec,errcheck
 
-			log.Info("debug version cli.htpasswd.go")
-
 			options := ctrl.Options{
 				Scheme: s,
 				Metrics: ctrl_metrics_server.Options{
@@ -68,11 +66,10 @@ func NewHtpasswdCommand() *cobra.Command {
 			}
 
 			htpasswd := &auth.Htpasswd{
-				Log:       log,
-				Client:    mgr.GetClient(),
-				Realm:     mustString(cmd.Flags().GetString("auth-realm")),
-				Selector:  secretsSelector,
-				LoginPath: mustString(cmd.Flags().GetString("login-path")),
+				Log:      log,
+				Client:   mgr.GetClient(),
+				Realm:    mustString(cmd.Flags().GetString("auth-realm")),
+				Selector: secretsSelector,
 			}
 
 			if err := htpasswd.RegisterWithManager(mgr); err != nil {
@@ -99,7 +96,6 @@ func NewHtpasswdCommand() *cobra.Command {
 					"address", mustString(cmd.Flags().GetString("address")),
 					"realm", htpasswd.Realm)
 
-				log.Info("debug version cli.htpasswd.go 2 tun server")
 				if err := auth.RunServer(ctx, listener, srv); err != nil {
 					errChan <- ExitErrorf(EX_FAIL, "authorization server failed: %w", err)
 				}
@@ -136,7 +132,6 @@ func NewHtpasswdCommand() *cobra.Command {
 	cmd.Flags().String("tls-cert-path", "", "Path to the TLS server certificate.")
 	cmd.Flags().String("tls-ca-path", "", "Path to the TLS CA certificate bundle.")
 	cmd.Flags().String("tls-key-path", "", "Path to the TLS server key.")
-	cmd.Flags().String("login-path", "/login", "The path to the login page.")
 
 	// Authorization flags.
 	cmd.Flags().String("auth-realm", "default", "Basic authentication realm.")
