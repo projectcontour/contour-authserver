@@ -78,33 +78,31 @@ func (o *OIDCConnect) Check(ctx context.Context, req *Request) (*Response, error
 	}
 
 	url := parseURL(req)
-
 	// check redirect url
 	if o.OidcConfig.RedirectURL == "" && len(o.OidcConfig.AuthorizedRedirectDomains) == 0 {
+		o.Log.Info("no redirectURL or AuthorizedRedirectDomains specified")
 		return &Response{}, fmt.Errorf("no redirectURL or AuthorizedRedirectDomains specified")
 	} else if len(o.OidcConfig.AuthorizedRedirectDomains) != 0 {
 		authorized := false
 		for _, domain := range o.OidcConfig.AuthorizedRedirectDomains {
 			domain = strings.TrimPrefix(domain, "*.")
-			if strings.HasSuffix(url.Host, domain) {
+			if strings.HasSuffix(url.Host, domain) || domain == "*" {
 				authorized = true
 				break
 			}
 		}
 		if !authorized {
+			o.Log.Info("redirectURL does not match", "url", url.Host, "authorizedRedirectDomains", o.OidcConfig.AuthorizedRedirectDomains)
 			return &Response{}, fmt.Errorf("redirectURL does not match")
 		}
-
 		o.OidcConfig.RedirectURL = fmt.Sprintf("%s://%s", url.Scheme, url.Host)
 
 	}
-
 	// Check if the current request matches the callback path.
 	if url.Path == o.OidcConfig.RedirectPath {
 		resp, err := o.callbackHandler(ctx, url)
 		return &resp, err
 	}
-
 	// Do we have stateid stored in querystring
 	state := o.GetState(ctx, req, url)
 	// Validate the state.
