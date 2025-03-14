@@ -16,8 +16,8 @@ package auth
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -26,7 +26,7 @@ import (
 // Httoken watches Secrets for httoken files and uses them for HTTP Basic Authentication.
 type Httoken struct {
 	Log         logr.Logger
-	StaticToken string
+	StaticToken []string
 }
 
 var _ Checker = &Httoken{}
@@ -38,8 +38,6 @@ func (h *Httoken) Check(ctx context.Context, request *Request) (*Response, error
 		"path", request.Request.URL.Path,
 		"id", request.ID,
 	)
-
-	h.Log.Info("request", "request", request.Request)
 
 	// Check for Bearer token
 	auth := request.Request.Header.Get("Authorization")
@@ -53,7 +51,7 @@ func (h *Httoken) Check(ctx context.Context, request *Request) (*Response, error
 	// If there's an "Authorization" header and we can verify
 	// it, succeed and inject some headers to tell the origin
 	//what  we did.
-	if token == h.StaticToken {
+	if slices.Contains(h.StaticToken, token) {
 		// TODO(jpeach) inject context attributes into the headers.
 		authorized := http.Response{
 			StatusCode: http.StatusOK,
@@ -84,38 +82,6 @@ func (h *Httoken) Check(ctx context.Context, request *Request) (*Response, error
 			Header: http.Header{
 				"WWW-Authenticate": {`Bearer realm="token", charset="UTF-8"`},
 			},
-		},
-	}, nil
-}
-
-func (h *Httoken) loginHandler() (*Response, error) {
-	h.Log.Info("loginHandler")
-
-	// Script JavaScript avec prompt() natif
-	loginHTML := `
-<!DOCTYPE html>
-<html>
-<body>
-<script>
-    const token = prompt("Entrez votre token d'authentification:", "");
-    if (token) {
-        // Set cookie
-        document.cookie = 'token-auth=' + token + '; Path=/; HttpOnly; Secure; SameSite=Lax';
-        // Redirect back
-        window.location.href = '/';
-    }
-</script>
-</body>
-</html>`
-
-	return &Response{
-		Allow: false,
-		Response: http.Response{
-			StatusCode: http.StatusUnauthorized,
-			Header: http.Header{
-				"Content-Type": {"text/html"},
-			},
-			Body: io.NopCloser(strings.NewReader(loginHTML)),
 		},
 	}, nil
 }

@@ -61,9 +61,10 @@ func NewHttokenCommand() *cobra.Command {
 				return ExitErrorf(EX_CONFIG, "failed to create controller manager: %s", err)
 			}
 
+			tokens, _ := cmd.Flags().GetStringSlice("token")
 			httoken := &auth.Httoken{
 				Log:         log,
-				StaticToken: mustString(cmd.Flags().GetString("token")),
+				StaticToken: tokens,
 			}
 
 			listener, err := net.Listen("tcp", mustString(cmd.Flags().GetString("address")))
@@ -121,7 +122,7 @@ func NewHttokenCommand() *cobra.Command {
 	cmd.Flags().String("tls-cert-path", "", "Path to the TLS server certificate.")
 	cmd.Flags().String("tls-ca-path", "", "Path to the TLS CA certificate bundle.")
 	cmd.Flags().String("tls-key-path", "", "Path to the TLS server key.")
-	cmd.Flags().String("token", "", "The token to use for authentication.")
+	cmd.Flags().StringSlice("token", []string{}, "The token to use for authentication.")
 
 	// Authorization flags.
 	cmd.Flags().String("auth-realm", "default", "Basic authentication realm.")
