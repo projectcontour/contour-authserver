@@ -221,10 +221,14 @@ func (o *OIDCConnect) refreshTokens(ctx context.Context, state *store.OIDCState,
 	return nil
 }
 
-func (o *OIDCConnect) GetState(ctx context.Context, req *Request, url *url.URL) *store.OIDCState {
+func (o *OIDCConnect) GetState(ctx context.Context, req *Request, requestUrl *url.URL) *store.OIDCState {
 	var state *store.OIDCState
 
-	stateToken := url.Query().Get(stateQueryParamName)
+	stateToken, err := url.QueryUnescape(requestUrl.Query().Get(stateQueryParamName))
+	if err != nil {
+		o.Log.Error(err, "error unescaping state token")
+		return nil
+	}
 
 	stateByte, err := o.Cache.Get(stateToken)
 	if err == nil {
