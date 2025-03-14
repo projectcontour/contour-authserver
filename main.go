@@ -45,7 +45,7 @@ func main() {
 	root.AddCommand(cli.Defaults(cli.NewTestserverCommand()))
 	root.AddCommand(cli.Defaults(cli.NewHtpasswdCommand()))
 	root.AddCommand(cli.Defaults(cli.NewOIDCConnect()))
-
+	root.AddCommand(cli.Defaults(cli.NewHttokenCommand()))
 	if err := root.Execute(); err != nil {
 		if msg := err.Error(); msg != "" {
 			fmt.Fprintf(os.Stderr, "%s: %s\n", version.Progname, msg)

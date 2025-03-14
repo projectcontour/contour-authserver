@@ -507,6 +507,7 @@ func (o *OIDCConnect) PropagateUserInfo(resp *Response, userInfo *UserInfo) {
 		return
 	}
 
+	resp.Response.Header.Add("Auth-Handler", "oidc")
 	resp.Response.Header.Add("X-Auth-User-Username", userInfo.Username)
 	resp.Response.Header.Add("X-Auth-User-Email", userInfo.Email)
 	resp.Response.Header.Add("X-Auth-User-Email-Verified", fmt.Sprintf("%v", userInfo.EmailVerified))
