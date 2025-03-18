@@ -1,7 +1,6 @@
 module github.com/projectcontour/contour-authserver
 
-go 1.23
-toolchain go1.23.2
+go 1.24.1
 
 require (
 	github.com/allegro/bigcache v1.2.1
