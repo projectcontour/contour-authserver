@@ -58,7 +58,7 @@ vet: ## Run go vet against code
 
 .PHONY: lint
 lint: ## Run linters
-	go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.0 run -v --exclude-use-default=false
+	go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run -v --exclude-use-default=false
 
 .PHONY: docker-build
 docker-build: ## Build the docker image
