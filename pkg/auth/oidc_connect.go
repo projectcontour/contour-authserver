@@ -224,6 +224,14 @@ func (o *OIDCConnect) refreshTokens(ctx context.Context, state *store.OIDCState,
 func (o *OIDCConnect) GetState(ctx context.Context, req *Request, requestUrl *url.URL) *store.OIDCState {
 	var state *store.OIDCState
 
+	// Check Authorization header
+	authHeader := req.Request.Header.Get("Authorization")
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		state = store.NewState()
+		state.AccessToken = strings.TrimPrefix(authHeader, "Bearer ")
+		return state
+	}
+
 	stateToken, err := url.QueryUnescape(requestUrl.Query().Get(stateQueryParamName))
 	if err != nil {
 		o.Log.Error(err, "error unescaping state token")
@@ -372,27 +380,46 @@ func (o *OIDCConnect) isValidStateToken(ctx context.Context, state *store.OIDCSt
 		return false
 	}
 
-	verifier := provider.Verifier(&oidc.Config{
-		ClientID:        o.OidcConfig.ClientID,
-		SkipIssuerCheck: o.OidcConfig.SkipIssuerCheck,
-	})
+	// Si on a un ID Token, on le vérifie
+	if state.IDToken != "" {
+		verifier := provider.Verifier(&oidc.Config{
+			ClientID:        o.OidcConfig.ClientID,
+			SkipIssuerCheck: o.OidcConfig.SkipIssuerCheck,
+		})
 
-	// Verify token and signature.
-	idToken, err := verifier.Verify(ctx, state.IDToken)
-	if err != nil {
-		o.Log.Info(fmt.Sprintf("failed to verify ID token: %v", err))
-		return false
+		// Verify token and signature.
+		idToken, err := verifier.Verify(ctx, state.IDToken)
+		if err != nil {
+			o.Log.Info(fmt.Sprintf("failed to verify ID token: %v", err))
+			return false
+		}
+
+		// TODO(robinfoe) #18 : OIDC support should propagate any claims back to the request
+		// Try to claim.
+		var claims json.RawMessage
+		if err := idToken.Claims(&claims); err != nil {
+			o.Log.Error(err, "error decoding ID token")
+			return false
+		}
+
+		return true
 	}
 
-	// TODO(robinfoe) #18 : OIDC support should propagate any claims back to the request
-	// Try to claim.
-	var claims json.RawMessage
-	if err := idToken.Claims(&claims); err != nil {
-		o.Log.Error(err, "error decoding ID token")
-		return false
+	// Si on a un Access Token, on vérifie via UserInfo
+	if state.AccessToken != "" {
+		_, err := provider.UserInfo(ctx, oauth2.StaticTokenSource(&oauth2.Token{
+			AccessToken: state.AccessToken,
+		}))
+		if err != nil {
+			o.Log.Info(fmt.Sprintf("failed to verify Access token: %v", err))
+			return false
+		}
+
+		return true
 	}
 
-	return true
+	// Aucun token valide
+	return false
 }
 
 // isAuthorized checks the user role and groups against the authorized
@@ -522,7 +549,7 @@ func (o *OIDCConnect) PropagateUserInfo(resp *Response, userInfo *UserInfo) {
 	resp.Response.Header.Add("X-Auth-User-Groups", strings.Join(userInfo.Groups, ","))
 }
 
-func (o *OIDCConnect) GetUserInfo(ctx context.Context, state *store.OIDCState) (*UserInfo, Response, error) {
+func (o *OIDCConnect) GetUserInfoDeprecated(ctx context.Context, state *store.OIDCState) (*UserInfo, Response, error) {
 	if state == nil {
 		return nil, createResponse(http.StatusUnauthorized), fmt.Errorf("state is nil")
 	}
@@ -560,6 +587,26 @@ func (o *OIDCConnect) GetUserInfo(ctx context.Context, state *store.OIDCState) (
 
 	userInfo.Roles = roles
 	userInfo.Groups = groups
+
+	return &userInfo, createResponse(http.StatusOK), nil
+}
+
+func (o *OIDCConnect) GetUserInfo(ctx context.Context, state *store.OIDCState) (*UserInfo, Response, error) {
+	if state == nil {
+		return nil, createResponse(http.StatusUnauthorized), fmt.Errorf("state is nil")
+	}
+
+	info, err := o.provider.UserInfo(ctx, oauth2.StaticTokenSource(&oauth2.Token{
+		AccessToken: state.AccessToken,
+	}))
+	if err != nil {
+		return nil, createResponse(http.StatusUnauthorized), err
+	}
+
+	var userInfo UserInfo
+	if err := info.Claims(&userInfo); err != nil {
+		return nil, createResponse(http.StatusUnauthorized), err
+	}
 
 	return &userInfo, createResponse(http.StatusOK), nil
 }
