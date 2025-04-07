@@ -1,7 +1,6 @@
 module github.com/projectcontour/contour-authserver
 
 go 1.24.1
-
 require (
 	github.com/allegro/bigcache v1.2.1
 	github.com/coreos/go-oidc/v3 v3.13.0
@@ -18,7 +17,7 @@ require (
 	k8s.io/api v0.32.3
 	k8s.io/apimachinery v0.32.3
 	k8s.io/client-go v0.32.3
-	sigs.k8s.io/controller-runtime v0.20.3
+	sigs.k8s.io/controller-runtime v0.20.4
 )
 
 require (
