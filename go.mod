@@ -1,9 +1,10 @@
 module github.com/projectcontour/contour-authserver
 
 go 1.24.1
+
 require (
 	github.com/allegro/bigcache v1.2.1
-	github.com/coreos/go-oidc/v3 v3.13.0
+	github.com/coreos/go-oidc/v3 v3.14.1
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4
 	github.com/go-logr/logr v1.4.2
 	github.com/mattn/go-isatty v0.0.20
