@@ -9,14 +9,10 @@ updates:
     interval: "weekly"
   labels:
   - area/dependency
-  reviewers:
-  - projectcontour/maintainers
 - package-ecosystem: "github-actions"
   directory: "/"
   schedule:
     interval: "weekly"
   labels:
   - area/tooling
-  reviewers:
-  - projectcontour/maintainers
   
