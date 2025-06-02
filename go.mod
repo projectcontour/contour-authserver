@@ -6,7 +6,7 @@ require (
 	github.com/allegro/bigcache v1.2.1
 	github.com/coreos/go-oidc/v3 v3.14.1
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4
-	github.com/go-logr/logr v1.4.2
+	github.com/go-logr/logr v1.4.3
 	github.com/mattn/go-isatty v0.0.20
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
