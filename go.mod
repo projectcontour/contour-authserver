@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/allegro/bigcache v1.2.1
-	github.com/coreos/go-oidc/v3 v3.15.0
+	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/envoyproxy/go-control-plane/envoy v1.36.0
 	github.com/go-logr/logr v1.4.3
 	github.com/mattn/go-isatty v0.0.20
